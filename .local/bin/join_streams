@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+
+if [ $# -eq 3 ]; then
+    ffmpeg -i "$1" -i "$2" -c:v copy -map 0:v:0 -map 1:a:0 "$3"
+else
+    echo "Incorrect inputs"
+    echo "Format:"
+    echo "       join_streams INFILE.mp4 INAUDIO.mp3 OUTFILE.mp4"
+fi

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+if [ $# -eq 2 ]; then
+	ffmpeg -i "$1" -vn -acodec libmp3lame -ab 320000 -vn "$2"
+else
+	echo "Incorrect inputs"
+fi
