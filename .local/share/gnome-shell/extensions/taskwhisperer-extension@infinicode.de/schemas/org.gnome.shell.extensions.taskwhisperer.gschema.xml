@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="gnome-shell-extension-taskwhisperer">
+  <enum id="org.gnome.shell.extensions.taskwhisperer.position">
+    <value value="0" nick="center"/>
+    <value value="1" nick="right"/>
+    <value value="2" nick="left"/>
+  </enum>
+  <enum id="org.gnome.shell.extensions.taskwhisperer.sortorder">
+    <value value="0" nick="due"/>
+    <value value="1" nick="urgency"/>
+  </enum>
+  <schema path="/org/gnome/shell/extensions/taskwhisperer/" id="org.gnome.shell.extensions.taskwhisperer">
+    <key name="position-in-panel" enum="org.gnome.shell.extensions.taskwhisperer.position">
+      <default>'center'</default>
+      <summary>Position in Panel</summary>
+    </key>
+    <key name="enable-taskd-sync" type="b">
+      <default>false</default>
+      <summary>Enable Task Server Syncronization</summary>
+    </key>
+    <key name="show-no-dates-at-end" type="b">
+      <default>false</default>
+      <summary>Show Tasks w/ no due at end of list</summary>
+    </key>
+    <key name="show-taskwarrior-icon" type="b">
+      <default>true</default>
+      <summary>Show TaskWarrior Icon in Panel</summary>
+    </key>
+    <key name="show-task-amount" type="b">
+      <default>true</default>
+      <summary>Show Task Amount in Panel</summary>
+    </key>
+      <key name="use-alternative-theme" type="b">
+      <default>false</default>
+      <summary>Use alternative theme</summary>
+    </key>
+    <key name="dateformat" type="s">
+      <default>'test'</default>
+      <summary>Date &amp; Time Format</summary>
+    </key>
+    <key name="sort-order" enum="org.gnome.shell.extensions.taskwhisperer.sortorder">
+      <default>'due'</default>
+      <summary>Order to sort by</summary>
+    </key>
+  </schema>
+</schemalist>
