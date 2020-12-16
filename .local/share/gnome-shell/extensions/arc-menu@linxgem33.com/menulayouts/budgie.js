@@ -43,14 +43,17 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
     }
     createLayout(){
         this.searchBox = new MW.SearchBox(this);
-        this.searchBox.actor.style ="margin: 0px 10px 10px 10px;";
         this._searchBoxChangedId = this.searchBox.connect('changed', this._onSearchBoxChanged.bind(this));
         this._searchBoxKeyPressId = this.searchBox.connect('key-press-event', this._onSearchBoxKeyPress.bind(this));
         this._searchBoxKeyFocusInId = this.searchBox.connect('key-focus-in', this._onSearchBoxKeyFocusIn.bind(this));
-        this.mainBox.add(this.searchBox.actor);
-
-        this.mainBox.add(this._createHorizontalSeparator(Constants.SEPARATOR_STYLE.MAX));
-
+        if(this._settings.get_enum('searchbar-default-top-location') === Constants.SearchbarLocation.TOP){
+            this.searchBox.actor.style ="margin: 0px 10px 10px 10px;";
+            this.mainBox.add(this.searchBox.actor);
+            let horizontalSep = this._createHorizontalSeparator(Constants.SEPARATOR_STYLE.MAX);
+            horizontalSep.style = "margin-bottom: 6px;";
+            this.mainBox.add(horizontalSep);
+        }
+        
         //Sub Main Box -- stores left and right box
         this.subMainBox = new St.BoxLayout({
             vertical: false,
@@ -73,17 +76,15 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         });
 
         this.applicationsScrollBox = this._createScrollBox({
-            x_fill: true,
-            y_fill: false,
             y_align: Clutter.ActorAlign.START,
             overlay_scrollbars: true,
-            style_class: 'vfade'
+            style_class: 'small-vfade'
         });  
 
         let rightPanelWidth = this._settings.get_int('right-panel-width');
         rightPanelWidth += 70;
         this.rightBox.style = "width: " + rightPanelWidth + "px;";
-        this.applicationsScrollBox.style = "width: " + rightPanelWidth + "px; padding-top:6px;";
+        this.applicationsScrollBox.style = "width: " + rightPanelWidth + "px;";
 
         // Disable horizontal scrolling, hide vertical scrollbar, but allow vertical scrolling.
         this.applicationsScrollBox.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.EXTERNAL);
@@ -95,28 +96,47 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
             vertical: true,
             x_expand: true,
             y_expand: true,
-            y_align: Clutter.ActorAlign.START
+            y_align: Clutter.ActorAlign.FILL
         });
-        this.subMainBox.add(this.leftBox);
+        
+        let horizonalFlip = this._settings.get_boolean("enable-horizontal-flip");
+        this.subMainBox.add(horizonalFlip ? this.rightBox : this.leftBox);  
         this.subMainBox.add(this._createVerticalSeparator());
-        this.subMainBox.add(this.rightBox);
+        this.subMainBox.add(horizonalFlip ? this.leftBox : this.rightBox);
 
         this.categoriesScrollBox = this._createScrollBox({
-            x_fill: true,
-            y_fill: false,
             x_expand: true,
-            y_expand: false,
+            y_expand: true,
             y_align: Clutter.ActorAlign.START,
-            y_align: Clutter.ActorAlign.START,
-            style_class: 'vfade',
+            style_class: 'apps-menu small-vfade left-scroll-area-small',
             overlay_scrollbars: true
         });
-        this.categoriesScrollBox.style = "padding-top:6px; width:185px;";
         this.leftBox.add(this.categoriesScrollBox);   
          
         this.categoriesBox = new St.BoxLayout({ vertical: true });
         this.categoriesScrollBox.add_actor(this.categoriesBox);
 
+        if(this._settings.get_boolean('enable-activities-shortcut')){
+            this.activitiesBox = new St.BoxLayout({ 
+                vertical: true,
+                x_expand: true, 
+                y_expand: true,
+                y_align: Clutter.ActorAlign.END
+            });
+            this.activities = new MW.ActivitiesMenuItem(this);
+            this.activitiesBox.add(this.activities.actor);
+            this.leftBox.add(this.activitiesBox);
+        }
+
+        if(this._settings.get_enum('searchbar-default-top-location') === Constants.SearchbarLocation.BOTTOM){
+            let horizontalSep = this._createHorizontalSeparator(Constants.SEPARATOR_STYLE.MAX);
+            horizontalSep.style = "margin-top: 6px;";
+            this.mainBox.add(horizontalSep);
+            this.searchBox.actor.style ="margin: 10px 10px 0px 10px;";
+            this.mainBox.add(this.searchBox.actor); 
+        }
+        
+        this.loadFavorites();
         this.loadCategories();
         this.displayCategories();
         this.setDefaultMenuView(); 
@@ -124,14 +144,15 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
 
     setDefaultMenuView(){
         super.setDefaultMenuView();
-        this.displayAllApps();
+        this.categoryDirectories.values().next().value.displayAppList();
+        this.activeMenuItem = this.categoryDirectories.values().next().value;
     }
     
     reload() {
         let rightPanelWidth = this._settings.get_int('right-panel-width');
         rightPanelWidth += 70;
         this.rightBox.style = "width: " + rightPanelWidth + "px;";
-        this.applicationsScrollBox.style = "width: " + rightPanelWidth + "px;  padding-top:6px;";
+        this.applicationsScrollBox.style = "width: " + rightPanelWidth + "px;";
         super.reload(); 
     }
 
@@ -139,15 +160,23 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         this.categoryDirectories = null;
         this.categoryDirectories = new Map(); 
 
-        let categoryMenuItem = new MW.CategoryMenuItem(this, Constants.CategoryType.ALL_PROGRAMS);
-        this.categoryDirectories.set(Constants.CategoryType.ALL_PROGRAMS, categoryMenuItem);
+        let extraCategories = this._settings.get_value("extra-categories").deep_unpack();
+
+        for(let i = 0; i < extraCategories.length; i++){
+            let categoryEnum = extraCategories[i][0];
+            let shouldShow = extraCategories[i][1];
+            if(shouldShow){
+                let categoryMenuItem = new MW.CategoryMenuItem(this, categoryEnum);
+                this.categoryDirectories.set(categoryEnum, categoryMenuItem);
+            }
+        }
 
         super.loadCategories();
         for(let categoryMenuItem of this.categoryDirectories.values()){
-            categoryMenuItem.actor.style = "padding-top: 10px; padding-bottom: 10px; margin: 0; spacing: 0;";
-            categoryMenuItem.actor.remove_actor(categoryMenuItem._icon);
+            categoryMenuItem.actor.style = "padding-top: 8px; padding-bottom: 8px; margin: 0; spacing: 0;";
+            categoryMenuItem.box.remove_actor(categoryMenuItem._icon);
             if(categoryMenuItem._arrowIcon)
-                categoryMenuItem.actor.remove_actor(categoryMenuItem._arrowIcon);
+                categoryMenuItem.box.remove_actor(categoryMenuItem._arrowIcon);
         }
     }
     

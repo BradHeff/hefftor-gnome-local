@@ -24,6 +24,7 @@
 const Me = imports.misc.extensionUtils.getCurrentExtension();
 const {St, Gio, GLib, Shell } = imports.gi;
 const Clutter = imports.gi.Clutter;
+const Constants = Me.imports.constants;
 const Gettext = imports.gettext.domain(Me.metadata['gettext-domain']);
 const GObject = imports.gi.GObject;
 const Main = imports.ui.main;
@@ -41,20 +42,26 @@ const Hostname1Iface = '<node> \
 </node>';
 const Hostname1 = Gio.DBusProxy.makeProxyWrapper(Hostname1Iface);
 
+const MEDIUM_ICON_SIZE = 25;
+const SMALL_ICON_SIZE = 16;
+
 var PlaceMenuItem = GObject.registerClass(class ArcMenu_PlaceMenuItem2 extends MW.ArcMenuPopupBaseMenuItem{
-    _init(info,button) {
-        super._init();
+    _init(info, menuLayout) {
+        super._init(menuLayout);
         this._info = info;
-        this._button = button;
+        this._menuLayout = menuLayout;
         this._icon = new St.Icon({
             gicon: info.icon,
-            icon_size: 16
+            icon_size: SMALL_ICON_SIZE
         });
-        this.actor.add_child(this._icon);
-        if(info.name.length>=20)
-            info.name = info.name.slice(0,20) + "...";
-        this.label = new St.Label({ text: info.name, x_expand: true});
-        this.actor.add_child(this.label);
+        this.box.add_child(this._icon);
+        this.label = new St.Label({ text: info.name, 
+                                    x_expand: true,
+                                    y_expand: true,
+                                    x_align: Clutter.ActorAlign.FILL,
+                                    y_align: Clutter.ActorAlign.CENTER });
+        
+        this.box.add_child(this.label);
 
         if (info.isRemovable()) {
             this._ejectIcon = new St.Icon({
@@ -63,7 +70,7 @@ var PlaceMenuItem = GObject.registerClass(class ArcMenu_PlaceMenuItem2 extends M
             });
             this._ejectButton = new St.Button({ child: this._ejectIcon });
             this._ejectButton.connect('clicked', info.eject.bind(info));
-            this.actor.add_child(this._ejectButton);
+            this.box.add_child(this._ejectButton);
         }
 
         this._changedId = info.connect('changed',
@@ -74,13 +81,22 @@ var PlaceMenuItem = GObject.registerClass(class ArcMenu_PlaceMenuItem2 extends M
                 this._changedId = 0;
             }
         });
+        let layout = this._menuLayout._settings.get_enum('menu-layout');  
+        if(layout === Constants.MENU_LAYOUT.Plasma)
+            this._updateIcon();
     }
    
+    _updateIcon(){
+        let largeIcons = this._menuLayout._settings.get_boolean('enable-large-icons');
+        this._icon.icon_size = largeIcons ? MEDIUM_ICON_SIZE : SMALL_ICON_SIZE;
+    }
+
     activate(event) {
         this._info.launch(event.get_time());
-        this._button.leftClickMenu.toggle();
+        this._menuLayout.arcMenu.toggle();
         super.activate(event);
     }
+
     _propertiesChanged(info) {
         this._icon.gicon = info.icon;
         this.label.text = info.name;
@@ -636,3 +652,102 @@ var PlacesManager = class ArcMenu_PlacesManager {
     }
 };
 Signals.addSignalMethods(PlacesManager.prototype);
+
+//Trash can class implemented from Dash to Dock https://github.com/micheleg/dash-to-dock/blob/master/locations.js
+var Trash = class ArcMenu_Trash {
+    constructor(menuItem) {
+        this._menuItem = menuItem;
+        let trashPath = GLib.get_home_dir() + '/.local/share/Trash/files/';
+        this._file = Gio.file_new_for_path(trashPath);
+        try {
+            this._monitor = this._file.monitor_directory(0, null);
+            this._signalId = this._monitor.connect(
+                'changed',
+                this._onTrashChange.bind(this)
+            );
+        } catch (e) {
+            log(`Impossible to monitor trash: ${e}`);
+        }
+        this._lastEmpty = true;
+        this._empty = true;
+        this._schedUpdateId = 0;
+        this._updateTrash();
+    }
+
+    destroy() {
+        if (this._monitor) {
+            this._monitor.disconnect(this._signalId);
+            this._monitor.run_dispose();
+        }
+        this._file.run_dispose();
+    }
+
+    _onTrashChange() {
+        if (this._schedUpdateId) {
+            GLib.source_remove(this._schedUpdateId);
+        }
+        this._schedUpdateId = GLib.timeout_add(
+            GLib.PRIORITY_DEFAULT, 500, () => {
+            this._schedUpdateId = 0;
+            this._updateTrash();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _updateTrash() {
+        try {
+            let children = this._file.enumerate_children('*', 0, null);
+            this._empty = children.next_file(null) == null;
+            children.close(null);
+        } catch (e) {
+            log(`Impossible to enumerate trash children: ${e}`)
+            return;
+        }
+
+        this._ensureApp();
+    }
+
+    _ensureApp() {
+        if (this._trashApp == null ||
+            this._lastEmpty != this._empty) {
+            let trashKeys = new GLib.KeyFile();
+            trashKeys.set_string('Desktop Entry', 'Name', _('Trash'));
+            trashKeys.set_string('Desktop Entry', 'Id', 'ArcMenu_Trash');
+            trashKeys.set_string('Desktop Entry', 'Icon',
+                                 this._empty ? 'user-trash-symbolic' : 'user-trash-full-symbolic');
+            trashKeys.set_string('Desktop Entry', 'Type', 'Application');
+            trashKeys.set_string('Desktop Entry', 'Exec', 'gio open trash:///');
+            trashKeys.set_string('Desktop Entry', 'StartupNotify', 'false');
+            trashKeys.set_string('Desktop Entry', 'XdtdUri', 'trash:///');
+            if (!this._empty) {
+                trashKeys.set_string('Desktop Entry', 'Actions', 'empty-trash;');
+                trashKeys.set_string('Desktop Action empty-trash', 'Name', _('Empty Trash'));
+                trashKeys.set_string('Desktop Action empty-trash', 'Exec',
+                                     'dbus-send --print-reply --dest=org.gnome.Nautilus /org/gnome/Nautilus org.gnome.Nautilus.FileOperations.EmptyTrash');
+            }
+            else{
+                trashKeys.set_string('Desktop Entry', 'Actions', 'empty-trash-inactive;');
+                trashKeys.set_string('Desktop Action empty-trash-inactive', 'Name', _('Empty Trash'));
+            }
+
+            let trashAppInfo = Gio.DesktopAppInfo.new_from_keyfile(trashKeys);
+            this._trashApp = new Shell.App({appInfo: trashAppInfo});
+            this._lastEmpty = this._empty;
+
+            this._menuItem._app = this._trashApp;
+            if(this._menuItem.contextMenu)
+                this._menuItem.contextMenu._app = this._trashApp;
+            let trashIcon = this._trashApp.create_icon_texture(MEDIUM_ICON_SIZE);
+            if(this._menuItem._icon && trashIcon)
+                this._menuItem._icon.gicon = trashIcon.gicon;
+
+            this.emit('changed');
+        }
+    }
+
+    getApp() {
+        this._ensureApp();
+        return this._trashApp;
+    }
+}
+Signals.addSignalMethods(Trash.prototype);

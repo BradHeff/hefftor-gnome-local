@@ -61,11 +61,9 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
             vertical: true
         });
         this.applicationsScrollBox = this._createScrollBox({
-            x_fill: true,
-            y_fill: false,
             y_align: Clutter.ActorAlign.START,
             overlay_scrollbars: true,
-            style_class: 'vfade'
+            style_class: 'small-vfade'
         }); 
 
         let rightPanelWidth = this._settings.get_int('right-panel-width');
@@ -84,17 +82,17 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
             vertical: true,
             style_class: 'left-box'
         });
-        this.subMainBox.add(this.leftBox);
+        
+        let horizonalFlip = this._settings.get_boolean("enable-horizontal-flip");
+        this.subMainBox.add(horizonalFlip ? this.rightBox : this.leftBox);  
         this.subMainBox.add(this._createVerticalSeparator());
-        this.subMainBox.add(this.rightBox);
+        this.subMainBox.add(horizonalFlip ? this.leftBox : this.rightBox);
 
         this.categoriesScrollBox = this._createScrollBox({
             x_expand: true,
             y_expand: true,
-            x_fill: true,
-            y_fill: false,
             y_align: Clutter.ActorAlign.START,
-            style_class: 'apps-menu vfade left-scroll-area',
+            style_class: 'apps-menu small-vfade left-scroll-area',
             overlay_scrollbars: true
         });
 
@@ -102,9 +100,17 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         this.categoriesBox = new St.BoxLayout({ vertical: true });
         this.categoriesScrollBox.add_actor(this.categoriesBox);
 
+        this.activitiesBox = new St.BoxLayout({ 
+            vertical: true,
+            x_expand: true, 
+            y_expand: true,
+            y_align: Clutter.ActorAlign.END
+        });
         let activities = new MW.ActivitiesMenuItem(this);
-        this.leftBox.add(activities.actor);
-        
+        this.activitiesBox.add(activities.actor);
+        this.leftBox.add(this.activitiesBox);
+
+        this.loadFavorites();
         this.loadCategories();
         this.displayCategories();
         this.setDefaultMenuView(); 
@@ -112,7 +118,8 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
 
     setDefaultMenuView(){
         super.setDefaultMenuView();
-        this.displayGnomeFavorites();
+        this.categoryDirectories.values().next().value.displayAppList();
+        this.activeMenuItem = this.categoryDirectories.values().next().value;
     }
 
     reload() {
@@ -126,17 +133,23 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
     loadCategories(){
         this.categoryDirectories = null;
         this.categoryDirectories = new Map(); 
-        let categoryMenuItem = new MW.CategoryMenuItem(this, Constants.CategoryType.FAVORITES);
-        this.categoryDirectories.set(Constants.CategoryType.FAVORITES, categoryMenuItem);
+        
+        let extraCategories = this._settings.get_value("extra-categories").deep_unpack();
 
-        categoryMenuItem = new MW.CategoryMenuItem(this, Constants.CategoryType.ALL_PROGRAMS);
-        this.categoryDirectories.set(Constants.CategoryType.ALL_PROGRAMS, categoryMenuItem);
+        for(let i = 0; i < extraCategories.length; i++){
+            let categoryEnum = extraCategories[i][0];
+            let shouldShow = extraCategories[i][1];
+            if(shouldShow){
+                let categoryMenuItem = new MW.CategoryMenuItem(this, categoryEnum);
+                this.categoryDirectories.set(categoryEnum, categoryMenuItem);
+            }
+        }
 
         super.loadCategories();
 
         for(let categoryMenuItem of this.categoryDirectories.values()){
-            categoryMenuItem.actor.style = "padding-top: 10px; padding-bottom: 10px;";
-            categoryMenuItem.actor.remove_actor(categoryMenuItem._icon);
+            categoryMenuItem.actor.style = "padding-top: 8px; padding-bottom: 8px;";
+            categoryMenuItem.box.remove_actor(categoryMenuItem._icon);
         }
     }
     

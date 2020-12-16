@@ -35,17 +35,16 @@ class WindowMover {
 
     _updateAppData() {
         let ids = [...this._appConfigs.keys()];
-        let removedApps = [...this._appData.keys()].filter(
-            a => !ids.includes(a.id)
-        );
+        let removedApps = [...this._appData.keys()]
+            .filter(a => !ids.includes(a.id));
         removedApps.forEach(app => {
             app.disconnect(this._appData.get(app).windowsChangedId);
             this._appData.delete(app);
         });
 
-        let addedApps = ids.map(id => this._appSystem.lookup_app(id)).filter(
-            app => app && !this._appData.has(app)
-        );
+        let addedApps = ids
+            .map(id => this._appSystem.lookup_app(id))
+            .filter(app => app && !this._appData.has(app));
         addedApps.forEach(app => {
             let data = {
                 windowsChangedId: app.connect('windows-changed',
@@ -94,9 +93,9 @@ class WindowMover {
         // the window still exists and is just moved to a different workspace
         // or something; assume it'll be added back immediately, so keep it
         // to avoid moving it again
-        windows.push(...data.windows.filter(
-            w => !windows.includes(w) && w.get_compositor_private() !== null
-        ));
+        windows.push(...data.windows.filter(w => {
+            return !windows.includes(w) && w.get_compositor_private() !== null;
+        }));
 
         let workspaceNum = this._appConfigs.get(app.id);
         windows.filter(w => !data.windows.includes(w)).forEach(window => {
@@ -117,10 +116,12 @@ function myCheckWorkspaces() {
     let keepAliveWorkspaces = [];
     let foundNonEmpty = false;
     for (let i = this._workspaces.length - 1; i >= 0; i--) {
-        if (!foundNonEmpty)
-            foundNonEmpty = this._workspaces[i].list_windows().length > 0;
-        else if (!this._workspaces[i]._keepAliveId)
+        if (!foundNonEmpty) {
+            foundNonEmpty = this._workspaces[i].list_windows().some(
+                w => !w.is_on_all_workspaces());
+        } else if (!this._workspaces[i]._keepAliveId) {
             keepAliveWorkspaces.push(this._workspaces[i]);
+        }
     }
 
     // make sure the original method only removes empty workspaces at the end

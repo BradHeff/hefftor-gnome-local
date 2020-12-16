@@ -59,7 +59,7 @@ var TweaksDialog = GObject.registerClass(
             else if(menuLayout == Constants.MENU_LAYOUT.Mint)
                 this._loadMintMenuTweaks(vbox);
             else if(menuLayout == Constants.MENU_LAYOUT.Elementary)
-                this._loadPlaceHolderTweaks(vbox);
+                this._loadElementaryTweaks(vbox);
             else if(menuLayout == Constants.MENU_LAYOUT.GnomeDash)
                 this._loadPlaceHolderTweaks(vbox);
             else if(menuLayout == Constants.MENU_LAYOUT.Simple)
@@ -70,7 +70,7 @@ var TweaksDialog = GObject.registerClass(
                 this._loadRedmondMenuTweaks(vbox)
             else if(menuLayout == Constants.MENU_LAYOUT.UbuntuDash)
                 this._loadUbuntuDashTweaks(vbox);
-            else if(menuLayout == Constants.MENU_LAYOUT.Raven)
+            else if(menuLayout == Constants.MENU_LAYOUT.Raven || menuLayout == Constants.MENU_LAYOUT.RavenExtended)
                 this._loadRavenTweaks(vbox);
             else if(menuLayout == Constants.MENU_LAYOUT.Budgie)
                 this._loadBudgieMenuTweaks(vbox);
@@ -78,6 +78,12 @@ var TweaksDialog = GObject.registerClass(
                 this._loadWindowsMenuTweaks(vbox);
             else if(menuLayout == Constants.MENU_LAYOUT.Runner)
                 this._loadKRunnerMenuTweaks(vbox);
+            else if(menuLayout == Constants.MENU_LAYOUT.Chromebook)
+                this._loadChromebookTweaks(vbox);
+            else if(menuLayout == Constants.MENU_LAYOUT.Tognee)
+                this._loadTogneeMenuTweaks(vbox);
+            else if(menuLayout == Constants.MENU_LAYOUT.Plasma)
+                this._loadPlasmaMenuTweaks(vbox);
             else
                 this._loadPlaceHolderTweaks(vbox);
         }
@@ -120,12 +126,50 @@ var TweaksDialog = GObject.registerClass(
             avatarStyleCombo.set_active(this._settings.get_enum('avatar-style'));
             avatarStyleCombo.connect('changed', (widget) => {
                 this._settings.set_enum('avatar-style', widget.get_active());
-                this._settings.set_boolean('reload-theme', false);
                 this._settings.set_boolean('reload-theme', true);
             });
             avatarStyleRow.add(avatarStyleLabel);
             avatarStyleRow.add(avatarStyleCombo);
             return avatarStyleRow;
+        }
+        _createSearchBarLocationRow(bottomDefault){
+            let searchBarLocationSetting = bottomDefault ? 'searchbar-default-bottom-location' : 'searchbar-default-top-location';
+                 
+            let searchbarLocationRow = new PW.FrameBoxRow();
+            let searchbarLocationLabel = new Gtk.Label({
+                label: _("Searchbar Location"),
+                use_markup: true,
+                xalign: 0,
+                hexpand: true
+            });
+            let searchbarLocationCombo = new Gtk.ComboBoxText({ halign: Gtk.Align.END });
+            searchbarLocationCombo.append_text(_("Bottom"));
+            searchbarLocationCombo.append_text(_("Top"));
+            searchbarLocationCombo.set_active(this._settings.get_enum(searchBarLocationSetting ));
+            searchbarLocationCombo.connect('changed', (widget) => {
+                this._settings.set_enum(searchBarLocationSetting , widget.get_active());
+            });
+
+            searchbarLocationRow.add(searchbarLocationLabel);
+            searchbarLocationRow.add(searchbarLocationCombo);
+            return searchbarLocationRow;
+        }
+        _createFlipHorizontalRow(){
+            let horizontalFlipRow = new PW.FrameBoxRow();
+            let horizontalFlipLabel = new Gtk.Label({
+                label: _("Flip Layout Horizontally"),
+                use_markup: true,
+                xalign: 0,
+                hexpand: true
+            });
+            let horizontalFlipSwitch = new Gtk.Switch({ halign: Gtk.Align.END });
+            horizontalFlipSwitch.set_active(this._settings.get_boolean('enable-horizontal-flip'));
+            horizontalFlipSwitch.connect('notify::active', (widget) => {
+                this._settings.set_boolean('enable-horizontal-flip', widget.get_active());
+            });
+            horizontalFlipRow.add(horizontalFlipLabel);
+            horizontalFlipRow.add(horizontalFlipSwitch);
+            return horizontalFlipRow;
         }
         _disableAvatarRow(){
             let disableAvatarRow = new PW.FrameBoxRow();
@@ -143,14 +187,201 @@ var TweaksDialog = GObject.registerClass(
             disableAvatarRow.add(disableAvatarSwitch);
             return disableAvatarRow;
         }
+        _loadPlasmaMenuTweaks(vbox){
+            let plasmaMenuTweaksFrame = new PW.FrameBox();
+            
+            let searchBarLocationSetting = 'searchbar-default-top-location';
+                 
+            let searchbarLocationRow = new PW.FrameBoxRow();
+            let searchbarLocationLabel = new Gtk.Label({
+                label: _("Searchbar Location"),
+                use_markup: true,
+                xalign: 0,
+                hexpand: true
+            });
+            let searchbarLocationCombo = new Gtk.ComboBoxText({ halign: Gtk.Align.END });
+            searchbarLocationCombo.append_text(_("Bottom"));
+            searchbarLocationCombo.append_text(_("Top"));
+            searchbarLocationCombo.set_active(this._settings.get_enum(searchBarLocationSetting));
+            searchbarLocationCombo.connect('changed', (widget) => {
+                this._settings.set_enum(searchBarLocationSetting , widget.get_active());
+            });
+
+            searchbarLocationRow.add(searchbarLocationLabel);
+            searchbarLocationRow.add(searchbarLocationCombo);
+            plasmaMenuTweaksFrame.add(searchbarLocationRow);
+
+            let hoverRow = new PW.FrameBoxRow();
+            let hoverLabel = new Gtk.Label({
+                label: _("Activate on Hover"),
+                use_markup: true,
+                xalign: 0,
+                hexpand: true
+            });
+            let hoverSwitch = new Gtk.Switch({ halign: Gtk.Align.END });
+            hoverSwitch.set_active(this._settings.get_boolean('plasma-enable-hover'));
+            hoverSwitch.connect('notify::active', (widget) => {
+                this._settings.set_boolean('plasma-enable-hover', widget.get_active());
+            });
+            hoverRow.add(hoverLabel);
+            hoverRow.add(hoverSwitch);
+            plasmaMenuTweaksFrame.add(hoverRow);
+
+            let descriptionsRow = new PW.FrameBoxRow();
+            let descriptionsLabel = new Gtk.Label({
+                label: _("Show Application Descriptions"),
+                use_markup: true,
+                xalign: 0,
+                hexpand: true
+            });
+            let descriptionsSwitch = new Gtk.Switch({ halign: Gtk.Align.END });
+            descriptionsSwitch.set_active(this._settings.get_boolean('plasma-show-descriptions'));
+            descriptionsSwitch.connect('notify::active', (widget) => {
+                this._settings.set_boolean('plasma-show-descriptions', widget.get_active());
+            });
+            descriptionsRow.add(descriptionsLabel);
+            descriptionsRow.add(descriptionsSwitch);
+            plasmaMenuTweaksFrame.add(descriptionsRow);
+
+            let foregroundColorRow = new PW.FrameBoxRow();
+            let foregroundColorLabel = new Gtk.Label({
+                label: _('Selected Button Border Color'),
+                xalign:0,
+                hexpand: true,
+             });   
+            let foregroundColorChooser = new Gtk.ColorButton({use_alpha:true});   
+            let color = new Gdk.RGBA();
+            color.parse(this._settings.get_string('plasma-selected-color'));
+            foregroundColorChooser.set_rgba(color);            
+            foregroundColorChooser.connect('color-set', ()=>{
+                this._settings.set_string('plasma-selected-color', foregroundColorChooser.get_rgba().to_string());
+                this._settings.set_boolean('reload-theme', true);
+            });
+            foregroundColorRow.add(foregroundColorLabel);
+            foregroundColorRow.add(foregroundColorChooser);
+            plasmaMenuTweaksFrame.add(foregroundColorRow);
+
+            let backgroundColorRow = new PW.FrameBoxRow();
+            let backgroundColorLabel = new Gtk.Label({
+                label: _('Selected Button Background Color'),
+                xalign:0,
+                hexpand: true,
+             });   
+            let backgroundColorChooser = new Gtk.ColorButton({use_alpha:true});   
+            color = new Gdk.RGBA();
+            color.parse(this._settings.get_string('plasma-selected-background-color'));
+            backgroundColorChooser.set_rgba(color);            
+            backgroundColorChooser.connect('color-set', ()=>{
+                this._settings.set_string('plasma-selected-background-color',backgroundColorChooser.get_rgba().to_string());
+                this._settings.set_boolean('reload-theme', true);
+            });
+            backgroundColorRow.add(backgroundColorLabel);
+            backgroundColorRow.add(backgroundColorChooser);
+            plasmaMenuTweaksFrame.add(backgroundColorRow);
+
+            vbox.add(plasmaMenuTweaksFrame);
+
+            let resetButton = new Gtk.Button({
+                label: _("Restore Defaults"),
+                halign: Gtk.Align.START,
+                hexpand: true
+            });
+            resetButton.set_sensitive(true);
+            resetButton.connect('clicked', ()=> {
+                let foregroundColor = this._settings.get_default_value('plasma-selected-color').unpack();
+                let backgroundColor = this._settings.get_default_value('plasma-selected-background-color').unpack();
+                let hoverEnabled = this._settings.get_default_value('plasma-enable-hover').unpack();
+                let showDescriptions = this._settings.get_default_value('plasma-show-descriptions').unpack();
+                this._settings.reset('searchbar-default-top-location');
+                searchbarLocationCombo.set_active(this._settings.get_enum(searchBarLocationSetting));
+                hoverSwitch.set_active(hoverEnabled);
+                color.parse(foregroundColor);
+                foregroundColorChooser.set_rgba(color); 
+                color.parse(backgroundColor);
+                backgroundColorChooser.set_rgba(color); 
+                descriptionsSwitch.set_active(showDescriptions);
+                this._settings.reset('plasma-selected-color');
+                this._settings.reset('plasma-selected-background-color');
+                this._settings.reset('plasma-enable-hover');
+                this._settings.reset('plasma-show-descriptions');
+                this._settings.set_boolean('reload-theme', true);
+            });
+            vbox.add(resetButton);
+        }
         _loadBriskMenuTweaks(vbox){
             let briskMenuTweaksFrame = new PW.FrameBox();
             briskMenuTweaksFrame.add(this._createActivateOnHoverRow());
+            briskMenuTweaksFrame.add(this._createSearchBarLocationRow());
+            briskMenuTweaksFrame.add(this._createFlipHorizontalRow());
+            let pinnedAppsFrame = new PW.FrameBox();
+            let pinnedAppsScrollWindow = new Gtk.ScrolledWindow();
+            pinnedAppsScrollWindow.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC);
+            pinnedAppsScrollWindow.set_max_content_height(100);
+            pinnedAppsScrollWindow.set_min_content_height(100);
+            //last row - save settings
+            let savePinnedAppsButton = new Gtk.Button({
+                label: _("Save"),
+            });
+            savePinnedAppsButton.connect('clicked', ()=> {
+                //iterate through each frame row (containing apps to pin) to create an array to save in settings
+                let array = [];
+                for(let x = 0;x < pinnedAppsFrame.count; x++) {
+                    array.push(pinnedAppsFrame.get_index(x)._name);
+                    array.push(pinnedAppsFrame.get_index(x)._icon);
+                    array.push(pinnedAppsFrame.get_index(x)._cmd);
+                }
+                this._settings.set_strv('brisk-shortcuts-list',array);
+                savePinnedAppsButton.set_sensitive(false);
+            }); 
+            savePinnedAppsButton.set_halign(Gtk.Align.END);
+            savePinnedAppsButton.set_sensitive(false);
+            
+            //function to load all pinned apps
+            this._loadPinnedApps(this._settings.get_strv('brisk-shortcuts-list'), pinnedAppsFrame, savePinnedAppsButton);
+            pinnedAppsScrollWindow.add_with_viewport(pinnedAppsFrame);
+
+            let pinnedAppsHeaderLabel = new Gtk.Label({
+                label: "<b>" + _("Brisk Menu Shortcuts") + "</b>",
+                use_markup: true,
+                xalign: 0
+            });
+
             vbox.add(briskMenuTweaksFrame);
+            vbox.add(pinnedAppsHeaderLabel);
+            vbox.add(pinnedAppsScrollWindow);
+            vbox.add(savePinnedAppsButton);
+        }
+        _loadChromebookTweaks(vbox){
+            let chromeBookTweaksFrame = new PW.FrameBox();
+            chromeBookTweaksFrame.add(this._createSearchBarLocationRow());
+            vbox.add(chromeBookTweaksFrame);
+        }
+        _loadElementaryTweaks(vbox){
+            let elementaryTweaksFrame = new PW.FrameBox();
+            elementaryTweaksFrame.add(this._createSearchBarLocationRow());
+            vbox.add(elementaryTweaksFrame);
         }
         _loadBudgieMenuTweaks(vbox){
             let budgieMenuTweaksFrame = new PW.FrameBox();
             budgieMenuTweaksFrame.add(this._createActivateOnHoverRow());
+            budgieMenuTweaksFrame.add(this._createSearchBarLocationRow());
+            budgieMenuTweaksFrame.add(this._createFlipHorizontalRow());
+
+            let enableActivitiesRow = new PW.FrameBoxRow();
+            let enableActivitiesLabel = new Gtk.Label({
+                label: _('Enable Activities Overview Shortcut'),
+                xalign:0,
+                hexpand: true,
+            });   
+            let enableActivitiesSwitch = new Gtk.Switch({ halign: Gtk.Align.END });
+            enableActivitiesSwitch.set_active(this._settings.get_boolean('enable-activities-shortcut'));
+            enableActivitiesSwitch.connect('notify::active', (widget) => {
+                this._settings.set_boolean('enable-activities-shortcut', widget.get_active());
+            });
+            enableActivitiesRow.add(enableActivitiesLabel);
+            enableActivitiesRow.add(enableActivitiesSwitch);
+            budgieMenuTweaksFrame.add(enableActivitiesRow);
+
             vbox.add(budgieMenuTweaksFrame);
         }
         _loadKRunnerMenuTweaks(vbox){
@@ -198,13 +429,6 @@ var TweaksDialog = GObject.registerClass(
             let generalPage = new PW.NotebookPage(_("General"));
             notebook.append_page(generalPage);
 
-            let pinnedAppsPage = new Prefs.PinnedAppsPage(this._settings);
-            notebook.append_page(pinnedAppsPage);
-
-            let applicationShortcutsPage = new Prefs.ApplicationShortcutsPage(this._settings);
-            applicationShortcutsPage._title.label = "<b>" + _("Shortcuts") + "</b>";
-            notebook.append_page(applicationShortcutsPage);
-
             let buttonsPage = new PW.NotebookPage(_("Buttons"));
             notebook.append_page(buttonsPage);
    
@@ -219,7 +443,7 @@ var TweaksDialog = GObject.registerClass(
             });   
             let homeScreenCombo = new Gtk.ComboBoxText({ halign: Gtk.Align.END });
             homeScreenCombo.append_text(_("Home Screen"));
-            homeScreenCombo.append_text(_("All Applications"));
+            homeScreenCombo.append_text(_("All Programs"));
             let homeScreen = this._settings.get_boolean('enable-ubuntu-homescreen');
             homeScreenCombo.set_active(homeScreen ? 0 : 1);
             homeScreenCombo.connect('changed', (widget) => {
@@ -282,17 +506,29 @@ var TweaksDialog = GObject.registerClass(
             //function to load all pinned apps
             this._loadPinnedApps(this._settings.get_strv('ubuntu-dash-pinned-app-list'), pinnedAppsFrame, savePinnedAppsButton);
             pinnedAppsScrollWindow.add_with_viewport(pinnedAppsFrame);
-            buttonsPage.add(pinnedAppsScrollWindow);
 
+            let pinnedAppsHeaderLabel = new Gtk.Label({
+                label: "<b>" + _("Ubuntu Dash Buttons") + "</b>",
+                use_markup: true,
+                xalign: 0
+            });
+            buttonsPage.add(pinnedAppsHeaderLabel);
+            buttonsPage.add(pinnedAppsScrollWindow);
             buttonsPage.add(savePinnedAppsButton);
+
+            let pinnedAppsSeparatorHeaderLabel = new Gtk.Label({
+                label: "<b>" + _("Button Separator Position") + "</b>",
+                use_markup: true,
+                xalign: 0
+            });
+            buttonsPage.add(pinnedAppsSeparatorHeaderLabel);
 
             let pinnedAppsSeparatorFrame = new PW.FrameBox();
             let pinnedAppsSeparatorRow = new PW.FrameBoxRow();
             let pinnedAppsSeparatorLabel = new Gtk.Label({
-                label: _("Separator Position Index"),
+                label: _("Separator Position"),
                 use_markup: true,
-                xalign: 0,
-                hexpand: true
+                xalign: 0
             });
             let pinnedAppsSeparatorScale = new Gtk.HScale({
                 adjustment: new Gtk.Adjustment({
@@ -305,28 +541,28 @@ var TweaksDialog = GObject.registerClass(
             pinnedAppsSeparatorScale.connect('value-changed', (widget) => {
                 this._settings.set_int('ubuntu-dash-separator-index', widget.get_value());
             }); 
+            
+            let infoButton = new PW.InfoButton();
+            infoButton.connect('clicked', ()=> {
+                let dialog = new Gtk.MessageDialog({
+                    text: _('Adjust the position of the separator in the button panel'),
+                    use_markup: true,
+                    buttons: Gtk.ButtonsType.OK,
+                    message_type: Gtk.MessageType.OTHER,
+                    transient_for: this.get_toplevel(),
+                    modal: true
+                });
+                dialog.connect ('response', ()=> dialog.destroy());
+                dialog.show();
+            });
+
             pinnedAppsSeparatorRow.add(pinnedAppsSeparatorLabel);
             pinnedAppsSeparatorRow.add(pinnedAppsSeparatorScale);
+            pinnedAppsSeparatorRow.add(infoButton);
             pinnedAppsSeparatorFrame.add(pinnedAppsSeparatorRow);
             buttonsPage.add(pinnedAppsSeparatorFrame);
-            
-            
         }
         _loadRavenTweaks(vbox){
-            let notebook = new PW.Notebook();
-
-            let generalPage = new PW.NotebookPage(_("General"));
-            notebook.append_page(generalPage);
-
-            let pinnedAppsPage = new Prefs.PinnedAppsPage(this._settings);
-            notebook.append_page(pinnedAppsPage);
-
-            let applicationShortcutsPage = new Prefs.ApplicationShortcutsPage(this._settings);
-            applicationShortcutsPage._title.label = "<b>" + _("Shortcuts") + "</b>";
-            notebook.append_page(applicationShortcutsPage);
-   
-            vbox.add(notebook);
-
             let generalTweaksFrame = new PW.FrameBox();
             let homeScreenRow = new PW.FrameBoxRow();
             let homeScreenLabel = new Gtk.Label({
@@ -336,7 +572,7 @@ var TweaksDialog = GObject.registerClass(
             });   
             let homeScreenCombo = new Gtk.ComboBoxText({ halign: Gtk.Align.END });
             homeScreenCombo.append_text(_("Home Screen"));
-            homeScreenCombo.append_text(_("All Applications"));
+            homeScreenCombo.append_text(_("All Programs"));
             let homeScreen = this._settings.get_boolean('enable-ubuntu-homescreen');
             homeScreenCombo.set_active(homeScreen ? 0 : 1);
             homeScreenCombo.connect('changed', (widget) => {
@@ -346,7 +582,7 @@ var TweaksDialog = GObject.registerClass(
             homeScreenRow.add(homeScreenLabel);
             homeScreenRow.add(homeScreenCombo);
             generalTweaksFrame.add(homeScreenRow);
-            generalPage.add(generalTweaksFrame);
+            vbox.add(generalTweaksFrame);
 
             let showMoreDetailsFrame = new PW.FrameBox();
             let showMoreDetailsRow = new PW.FrameBoxRow();
@@ -366,23 +602,31 @@ var TweaksDialog = GObject.registerClass(
             showMoreDetailsRow.add(showMoreDetailsLabel);
             showMoreDetailsRow.add(showMoreDetailsSwitch);
             showMoreDetailsFrame.add(showMoreDetailsRow);
-            generalPage.add(showMoreDetailsFrame);
+            if(this._settings.get_enum('menu-layout') === Constants.MENU_LAYOUT.Raven)
+                vbox.add(showMoreDetailsFrame);
 
             let widgetFrame =  this._createWidgetsRows(Constants.MENU_LAYOUT.Raven);
-            generalPage.add(widgetFrame);
+            vbox.add(widgetFrame);
         }
         _loadMintMenuTweaks(vbox){
             let mintMenuTweaksFrame = new PW.FrameBox();
             mintMenuTweaksFrame.add(this._createActivateOnHoverRow());
+            mintMenuTweaksFrame.add(this._createSearchBarLocationRow());
+            mintMenuTweaksFrame.add(this._createFlipHorizontalRow());
             vbox.add(mintMenuTweaksFrame);
 
+            let pinnedAppsHeaderLabel = new Gtk.Label({
+                label: "<b>" + _("Mint Menu Shortcuts") + "</b>",
+                use_markup: true,
+                xalign: 0
+            });
+            vbox.add(pinnedAppsHeaderLabel);
+
             let pinnedAppsFrame = new PW.FrameBox();
-            
             let pinnedAppsScrollWindow = new Gtk.ScrolledWindow();
             pinnedAppsScrollWindow.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC);
             pinnedAppsScrollWindow.set_max_content_height(300);
             pinnedAppsScrollWindow.set_min_content_height(300);
-            //last row - save settings
             let savePinnedAppsButton = new Gtk.Button({
                 label: _("Save"),
             });
@@ -407,13 +651,19 @@ var TweaksDialog = GObject.registerClass(
 
             vbox.add(savePinnedAppsButton);
 
+            let pinnedAppsSeparatorHeaderLabel = new Gtk.Label({
+                label: "<b>" + _("Shortcut Separator Position") + "</b>",
+                use_markup: true,
+                xalign: 0
+            });
+            vbox.add(pinnedAppsSeparatorHeaderLabel);
+
             let pinnedAppsSeparatorFrame = new PW.FrameBox();
             let pinnedAppsSeparatorRow = new PW.FrameBoxRow();
             let pinnedAppsSeparatorLabel = new Gtk.Label({
-                label: _("Separator Position Index"),
+                label: _("Separator Position"),
                 use_markup: true,
-                xalign: 0,
-                hexpand: true
+                xalign: 0
             });
             let pinnedAppsSeparatorScale = new Gtk.HScale({
                 adjustment: new Gtk.Adjustment({
@@ -426,12 +676,26 @@ var TweaksDialog = GObject.registerClass(
             pinnedAppsSeparatorScale.connect('value-changed', (widget) => {
                 this._settings.set_int('mint-separator-index', widget.get_value());
             }); 
+
+            let infoButton = new PW.InfoButton();
+            infoButton.connect('clicked', ()=> {
+                let dialog = new Gtk.MessageDialog({
+                    text: _('Adjust the position of the separator in the button panel'),
+                    use_markup: true,
+                    buttons: Gtk.ButtonsType.OK,
+                    message_type: Gtk.MessageType.OTHER,
+                    transient_for: this.get_toplevel(),
+                    modal: true
+                });
+                dialog.connect ('response', ()=> dialog.destroy());
+                dialog.show();
+            });
+
             pinnedAppsSeparatorRow.add(pinnedAppsSeparatorLabel);
             pinnedAppsSeparatorRow.add(pinnedAppsSeparatorScale);
+            pinnedAppsSeparatorRow.add(infoButton);
             pinnedAppsSeparatorFrame.add(pinnedAppsSeparatorRow);
             vbox.add(pinnedAppsSeparatorFrame);
-            
-            
         }
         _loadPinnedApps(array,frame, savePinnedAppsButton) {
             for(let i = 0;i<array.length;i+=3) {
@@ -439,9 +703,12 @@ var TweaksDialog = GObject.registerClass(
                 frameRow._name = array[i];
                 frameRow._icon = Prefs.getIconPath([array[i], array[i+1], array[i+2]]);
                 frameRow._cmd = array[i+2];
-                
+                let iconString;
+                if(frameRow._icon === "" && Gio.DesktopAppInfo.new(frameRow._cmd)){
+                    iconString = Gio.DesktopAppInfo.new(frameRow._cmd).get_icon() ? Gio.DesktopAppInfo.new(frameRow._cmd).get_icon().to_string() : "";
+                }
                 let arcMenuImage = new Gtk.Image( {
-                    gicon: Gio.icon_new_for_string(frameRow._icon),
+                    gicon: Gio.icon_new_for_string(iconString ? iconString : frameRow._icon),
                     pixel_size: 22
                 });
                 
@@ -468,7 +735,6 @@ var TweaksDialog = GObject.registerClass(
                     margin_bottom: 0,
                     vexpand: false,
                     hexpand: false,
-                    margin_right: 15,
                     column_spacing: 2
                 });
 
@@ -476,7 +742,8 @@ var TweaksDialog = GObject.registerClass(
                 //and delete pinned apps
                 let addPinnedAppsButton = new PW.IconButton({
                     circular: false,
-                    icon_name: 'list-add-symbolic'
+                    icon_name: 'text-editor-symbolic',
+                    tooltip_text: _("Change")
                 });
                 addPinnedAppsButton.connect('clicked', ()=> {
                     let dialog = new Prefs.AddAppsToPinnedListWindow(this._settings, this, Constants.DIALOG_TYPE.Mint_Pinned_Apps);
@@ -489,7 +756,12 @@ var TweaksDialog = GObject.registerClass(
                             frameRow._icon = newPinnedApps[1];
                             frameRow._cmd = newPinnedApps[2];
                             frameLabel.label = _(frameRow._name);
-                            arcMenuImage.gicon = Gio.icon_new_for_string(frameRow._icon);
+                            let iconString;
+                            if(frameRow._icon === "" && Gio.DesktopAppInfo.new(frameRow._cmd)){
+                                iconString = Gio.DesktopAppInfo.new(frameRow._cmd).get_icon() ? Gio.DesktopAppInfo.new(frameRow._cmd).get_icon().to_string() : "";
+                            }
+                            let icon = Prefs.getIconPath(newPinnedApps);
+                            arcMenuImage.gicon = Gio.icon_new_for_string(iconString ? iconString : icon);
                             dialog.destroy();
                             frame.show();
                             savePinnedAppsButton.set_sensitive(true);
@@ -501,15 +773,18 @@ var TweaksDialog = GObject.registerClass(
 
                 let editButton = new PW.IconButton({
                     circular: false,
-                    icon_name: 'emblem-system-symbolic'
+                    icon_name: 'emblem-system-symbolic',
+                    tooltip_text: _("Modify")
                 });
                 let upButton = new PW.IconButton({
                     circular: false,
-                    icon_name: 'go-up-symbolic'
+                    icon_name: 'go-up-symbolic',
+                    tooltip_text: _('Move Up')
                 });
                 let downButton = new PW.IconButton({
                     circular: false,
-                    icon_name: 'go-down-symbolic'
+                    icon_name: 'go-down-symbolic',
+                    tooltip_text: _('Move Down')
                 });
                 editButton.connect('clicked', ()=> {
                     let appArray = [frameRow._name,frameRow._icon,frameRow._cmd];
@@ -522,7 +797,11 @@ var TweaksDialog = GObject.registerClass(
                             frameRow._icon = newPinnedApps[1];
                             frameRow._cmd = newPinnedApps[2];
                             frameLabel.label = _(frameRow._name);
-                            arcMenuImage.gicon = Gio.icon_new_for_string(frameRow._icon);
+                            let iconString;
+                            if(frameRow._icon === "" && Gio.DesktopAppInfo.new(frameRow._cmd)){
+                                iconString = Gio.DesktopAppInfo.new(frameRow._cmd).get_icon() ? Gio.DesktopAppInfo.new(frameRow._cmd).get_icon().to_string() : "";
+                            }
+                            arcMenuImage.gicon = Gio.icon_new_for_string(iconString ? iconString : frameRow._icon);
                             dialog.destroy();
                             frame.show();
                             savePinnedAppsButton.set_sensitive(true);
@@ -567,67 +846,30 @@ var TweaksDialog = GObject.registerClass(
         _loadWhiskerMenuTweaks(vbox){
             let whiskerMenuTweaksFrame = new PW.FrameBox();
             whiskerMenuTweaksFrame.add(this._createActivateOnHoverRow());
-
             whiskerMenuTweaksFrame.add(this._createAvatarShapeRow());
-
+            whiskerMenuTweaksFrame.add(this._createSearchBarLocationRow());
+            whiskerMenuTweaksFrame.add(this._createFlipHorizontalRow());
             vbox.add(whiskerMenuTweaksFrame);
         }
         _loadRedmondMenuTweaks(vbox){
             let redmondMenuTweaksFrame = new PW.FrameBox();
-            let searchbarLocationRow = new PW.FrameBoxRow();
-            let searchbarLocationLabel = new Gtk.Label({
-                label: _("Searchbar Location"),
-                use_markup: true,
-                xalign: 0,
-                hexpand: true
-            });
-            let searchbarLocationCombo = new Gtk.ComboBoxText({ halign: Gtk.Align.END });
-            searchbarLocationCombo.append_text(_("Bottom"));
-            searchbarLocationCombo.append_text(_("Top"));
-            searchbarLocationCombo.set_active(this._settings.get_enum('searchbar-location-redmond'));
-            searchbarLocationCombo.connect('changed', (widget) => {
-                    this._settings.set_enum('searchbar-location-redmond', widget.get_active());
-            });
+            redmondMenuTweaksFrame.add(this._createSearchBarLocationRow());
 
-            searchbarLocationRow.add(searchbarLocationLabel);
-            searchbarLocationRow.add(searchbarLocationCombo);
-            redmondMenuTweaksFrame.add(searchbarLocationRow);
-
-            let horizontalFlipRow = new PW.FrameBoxRow();
-            let horizontalFlipLabel = new Gtk.Label({
-                label: _("Flip Horizontally"),
-                use_markup: true,
-                xalign: 0,
-                hexpand: true
-            });
-            let horizontalFlipSwitch = new Gtk.Switch({ halign: Gtk.Align.END });
-            horizontalFlipSwitch.set_active(this._settings.get_boolean('enable-horizontal-flip'));
-            horizontalFlipSwitch.connect('notify::active', (widget) => {
-                this._settings.set_boolean('enable-horizontal-flip', widget.get_active());
-            });
-            horizontalFlipRow.add(horizontalFlipLabel);
-            horizontalFlipRow.add(horizontalFlipSwitch);
-            redmondMenuTweaksFrame.add(horizontalFlipRow);
+            redmondMenuTweaksFrame.add(this._createFlipHorizontalRow());
             redmondMenuTweaksFrame.add(this._createAvatarShapeRow());
             redmondMenuTweaksFrame.add(this._disableAvatarRow());
 
             vbox.add(redmondMenuTweaksFrame);
         }
         _loadWindowsMenuTweaks(vbox){
-            let notebook = new PW.Notebook();
-
-            let pinnedAppsPage = new Prefs.PinnedAppsPage(this._settings);
-            notebook.append_page(pinnedAppsPage);
-
             let windowsMenuTweaksFrame = new PW.FrameBox();
             windowsMenuTweaksFrame.add(this._createAvatarShapeRow());
-
             vbox.add(windowsMenuTweaksFrame);
-            vbox.add(notebook);
         }
         _loadGnomeMenuTweaks(vbox){
             let gnomeMenuTweaksFrame = new PW.FrameBox();
             gnomeMenuTweaksFrame.add(this._createActivateOnHoverRow());
+            gnomeMenuTweaksFrame.add(this._createFlipHorizontalRow());
             vbox.add(gnomeMenuTweaksFrame);
         }
         _loadPlaceHolderTweaks(vbox){
@@ -643,69 +885,65 @@ var TweaksDialog = GObject.registerClass(
             placeHolderFrame.add(placeHolderRow);
             vbox.add(placeHolderFrame);
         }
+        _loadTogneeMenuTweaks(vbox){
+            let togneeMenuTweaksFrame = new PW.FrameBox();
+            let searchBarBottomDefault = true;
+            let defaultLeftBoxRow = new PW.FrameBoxRow();
+            let defaultLeftBoxLabel = new Gtk.Label({
+                label: _("Default Screen"),
+                use_markup: true,
+                xalign: 0,
+                hexpand: true
+            });
+            let defaultLeftBoxCombo = new Gtk.ComboBoxText({ 
+                halign: Gtk.Align.END,
+                tooltip_text: _("Choose the default screen for tognee Layout") 
+            });
+            defaultLeftBoxCombo.append_text(_("Categories List"));
+            defaultLeftBoxCombo.append_text(_("All Programs"));
+            defaultLeftBoxCombo.set_active(this._settings.get_enum('default-menu-view-tognee'));
+            defaultLeftBoxCombo.connect('changed', (widget) => {
+                this._settings.set_enum('default-menu-view-tognee', widget.get_active());
+            });
+
+            defaultLeftBoxRow.add(defaultLeftBoxLabel);
+            defaultLeftBoxRow.add(defaultLeftBoxCombo);
+            togneeMenuTweaksFrame.add(defaultLeftBoxRow);
+            togneeMenuTweaksFrame.add(this._createSearchBarLocationRow(searchBarBottomDefault));
+            togneeMenuTweaksFrame.add(this._createFlipHorizontalRow());
+            togneeMenuTweaksFrame.add(this._createAvatarShapeRow());
+            togneeMenuTweaksFrame.add(this._disableAvatarRow());
+            vbox.add(togneeMenuTweaksFrame);
+        }
         _loadArcMenuTweaks(vbox){
             //Pinned Apps / Categories Default View Toggle 
             let arcMenuTweaksFrame = new PW.FrameBox();
             let defaultLeftBoxRow = new PW.FrameBoxRow();
             let defaultLeftBoxLabel = new Gtk.Label({
-                label: _("Arc Menu Default View"),
+                label: _("Default Screen"),
                 use_markup: true,
                 xalign: 0,
                 hexpand: true
             });
-            let defaultLeftBoxCombo = new Gtk.ComboBoxText({ halign: Gtk.Align.END });
+            let defaultLeftBoxCombo = new Gtk.ComboBoxText({ 
+                halign: Gtk.Align.END,
+                tooltip_text: _("Choose the default screen for Arc Menu") 
+            });
             defaultLeftBoxCombo.append_text(_("Pinned Apps"));
             defaultLeftBoxCombo.append_text(_("Categories List"));
-            if(this._settings.get_boolean('enable-pinned-apps'))
-                defaultLeftBoxCombo.set_active(0);
-            else 
-                defaultLeftBoxCombo.set_active(1);
+            defaultLeftBoxCombo.append_text(_("Frequent Apps"));
+            defaultLeftBoxCombo.set_active(this._settings.get_enum('default-menu-view'));
             defaultLeftBoxCombo.connect('changed', (widget) => {
-                if(widget.get_active()==0)
-                    this._settings.set_boolean('enable-pinned-apps',true);
-                if(widget.get_active()==1)
-                    this._settings.set_boolean('enable-pinned-apps',false);
+                this._settings.set_enum('default-menu-view', widget.get_active());
             });
 
             defaultLeftBoxRow.add(defaultLeftBoxLabel);
             defaultLeftBoxRow.add(defaultLeftBoxCombo);
             arcMenuTweaksFrame.add(defaultLeftBoxRow);
 
-            let searchbarLocationRow = new PW.FrameBoxRow();
-            let searchbarLocationLabel = new Gtk.Label({
-                label: _("Searchbar Location"),
-                use_markup: true,
-                xalign: 0,
-                hexpand: true
-            });
-            let searchbarLocationCombo = new Gtk.ComboBoxText({ halign: Gtk.Align.END });
-            searchbarLocationCombo.append_text(_("Bottom"));
-            searchbarLocationCombo.append_text(_("Top"));
-            searchbarLocationCombo.set_active(this._settings.get_enum('searchbar-location'));
-            searchbarLocationCombo.connect('changed', (widget) => {
-                    this._settings.set_enum('searchbar-location', widget.get_active());
-            });
-
-            searchbarLocationRow.add(searchbarLocationLabel);
-            searchbarLocationRow.add(searchbarLocationCombo);
-            arcMenuTweaksFrame.add(searchbarLocationRow);
-
-            let horizontalFlipRow = new PW.FrameBoxRow();
-            let horizontalFlipLabel = new Gtk.Label({
-                label: _("Flip Horizontally"),
-                use_markup: true,
-                xalign: 0,
-                hexpand: true
-            });
-            let horizontalFlipSwitch = new Gtk.Switch({ halign: Gtk.Align.END });
-            horizontalFlipSwitch.set_active(this._settings.get_boolean('enable-horizontal-flip'));
-            horizontalFlipSwitch.connect('notify::active', (widget) => {
-                this._settings.set_boolean('enable-horizontal-flip', widget.get_active());
-            });
-            horizontalFlipRow.add(horizontalFlipLabel);
-            horizontalFlipRow.add(horizontalFlipSwitch);
-            arcMenuTweaksFrame.add(horizontalFlipRow);
-
+            let searchBarBottomDefault = true;
+            arcMenuTweaksFrame.add(this._createSearchBarLocationRow(searchBarBottomDefault));
+            arcMenuTweaksFrame.add(this._createFlipHorizontalRow());
             arcMenuTweaksFrame.add(this._createAvatarShapeRow());
             arcMenuTweaksFrame.add(this._disableAvatarRow());
             vbox.add(arcMenuTweaksFrame);

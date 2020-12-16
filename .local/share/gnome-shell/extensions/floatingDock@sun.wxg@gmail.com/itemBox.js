@@ -31,8 +31,10 @@ var BoxSlideLayout = GObject.registerClass({
     }
 
     vfunc_get_preferred_width(container, forHeight) {
-
         let child = container.get_first_child();
+        if (child == null)
+            return [null, null];
+
         let [minWidth, natWidth] = child.get_preferred_width(forHeight);
         if (this._direction == St.Side.TOP ||
             this._direction == St.Side.BOTTOM)
@@ -47,6 +49,9 @@ var BoxSlideLayout = GObject.registerClass({
 
     vfunc_get_preferred_height(container, forWidth) {
         let child = container.get_first_child();
+        if (child == null)
+            return [null, null];
+
         let [minHeight, natHeight] = child.get_preferred_height(forWidth);
         if (this._direction == St.Side.LEFT ||
             this._direction == St.Side.RIGHT)
@@ -59,7 +64,7 @@ var BoxSlideLayout = GObject.registerClass({
         return [minHeight, natHeight];
     }
 
-    vfunc_allocate(container, box, flags) {
+    vfunc_allocate(container, box) {
         let children = container.get_children();
         if (!children.length)
             return;
@@ -72,7 +77,8 @@ var BoxSlideLayout = GObject.registerClass({
         let [, natHeight] = child.get_preferred_height(availWidth);
 
         let actorBox = new Clutter.ActorBox();
-        for (let i = 0; i < children.length; i++) {
+        let i;
+        for (i = 0; i < children.length; i++) {
             if (this._direction == St.Side.TOP ||
                 this._direction == St.Side.BOTTOM) {
                 actorBox.x1 = box.x1;
@@ -83,7 +89,7 @@ var BoxSlideLayout = GObject.registerClass({
                 if (actorBox.y2 > box.y2)
                 break;
 
-                children[i].allocate(actorBox, flags);
+                children[i].allocate(actorBox);
             } else {
                 actorBox.x1 = box.x1 + i * natWidth;
                 actorBox.x2 = actorBox.x1 + natWidth;
@@ -93,8 +99,13 @@ var BoxSlideLayout = GObject.registerClass({
                 if (actorBox.x2 > box.x2)
                 break;
 
-                children[i].allocate(actorBox, flags);
+                children[i].allocate(actorBox);
             }
+        }
+
+        for (; i < children.length; i++) {
+            actorBox.set_size(0, 0);
+            children[i].allocate(actorBox);
         }
     }
 

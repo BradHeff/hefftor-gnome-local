@@ -11,7 +11,7 @@ const PanelMenu = imports.ui.panelMenu;
 const PopupMenu = imports.ui.popupMenu;
 
 const St = imports.gi.St;
-const Tweener = imports.ui.tweener;
+const Tweener = imports.tweener && imports.tweener.tweener || imports.ui.tweener;
 
 let onWindowGrabBegin, onWindowGrabEnd;
 let windowMoving = false;
@@ -64,11 +64,11 @@ updateSettings();
 let settingsChangedId = settings.connect('changed', updateSettings.bind());
 
 const Config = imports.misc.config;
-window.gsconnect = {
+window.wintile = {
 	extdatadir: imports.misc.extensionUtils.getCurrentExtension().path,
 	shell_version: parseInt(Config.PACKAGE_VERSION.split('.')[1], 10)
 };
-imports.searchPath.unshift(gsconnect.extdatadir);
+imports.searchPath.unshift(wintile.extdatadir);
 
 const KeyBindings = imports.keybindings
 let keyManager = null;
@@ -634,7 +634,7 @@ function windowGrabBegin(meta_display, meta_screen, meta_window, meta_grab_op, g
 		}
 		if (meta_window.resizeable && config.preview.enabled) {
 			app.origFrameRect = app.get_frame_rect();
-			Mainloop.timeout_add(500, function () {
+			Mainloop.timeout_add(config.preview.delay, function () {
 				checkIfNearGrid(app);
 			});	
 		}	

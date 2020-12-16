@@ -47,7 +47,7 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         this._searchBoxChangedId = this.searchBox.connect('changed', this._onSearchBoxChanged.bind(this));
         this._searchBoxKeyPressId = this.searchBox.connect('key-press-event', this._onSearchBoxKeyPress.bind(this));
         this._searchBoxKeyFocusInId = this.searchBox.connect('key-focus-in', this._onSearchBoxKeyFocusIn.bind(this));
-        if(this._settings.get_enum('searchbar-location') === Constants.SearchbarLocation.TOP){
+        if(this._settings.get_enum('searchbar-default-bottom-location') === Constants.SearchbarLocation.TOP){
             this.searchBox.actor.style = "margin: 0px 10px 5px 10px; padding-top: 0.0em; padding-bottom: 0.5em;padding-left: 0.4em;padding-right: 0.4em;";
             this.mainBox.add(this.searchBox.actor);
         }
@@ -71,12 +71,10 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
 
         //Applications Box - Contains Favorites, Categories or programs
         this.applicationsScrollBox = this._createScrollBox({
-            x_fill: true,
-            y_fill: false,
             x_expand: true,
             y_expand: true, 
             y_align: Clutter.ActorAlign.START,
-            style_class: 'apps-menu vfade left-scroll-area',
+            style_class: 'apps-menu small-vfade left-scroll-area',
             overlay_scrollbars: true,
             reactive:true
         });
@@ -84,14 +82,21 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         this.applicationsBox = new St.BoxLayout({ vertical: true });
         this.applicationsScrollBox.add_actor(this.applicationsBox);
 
-        this.leftBox.add(this._createHorizontalSeparator(Constants.SEPARATOR_STYLE.LONG));
+        this.navigateBox = new St.BoxLayout({ 
+            vertical: true,
+            x_expand: true, 
+            y_expand: true,
+            y_align: Clutter.ActorAlign.END
+        });
+        this.navigateBox.add(this._createHorizontalSeparator(Constants.SEPARATOR_STYLE.LONG));
         
         this.backButton = new MW.BackMenuItem(this);
-        this.leftBox.add(this.backButton.actor);
+        this.navigateBox.add(this.backButton.actor);
         
         this.viewProgramsButton = new MW.ViewAllPrograms(this);
-        this.leftBox.add(this.viewProgramsButton.actor);
-        if(this._settings.get_enum('searchbar-location') === Constants.SearchbarLocation.BOTTOM){
+        this.navigateBox.add(this.viewProgramsButton.actor);
+        this.leftBox.add(this.navigateBox);
+        if(this._settings.get_enum('searchbar-default-bottom-location') === Constants.SearchbarLocation.BOTTOM){
             this.searchBox.actor.style = "padding-top: 0.75em; padding-bottom: 0.25em; padding-left: 1em; padding-right: 0.25em; margin-right: .5em;";
             this.leftBox.add(this.searchBox.actor);
         }
@@ -123,11 +128,9 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         });
 
         this.shortcutsScrollBox = this._createScrollBox({
-            x_fill: true,
-            y_fill: false,
             y_align: Clutter.ActorAlign.START,
             overlay_scrollbars: true,
-            style_class: 'vfade'
+            style_class: 'small-vfade',
         });    
 
         this.shortcutsScrollBox.add_actor(this.shortcutsBox);
@@ -164,15 +167,15 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         this.placesManager = new PlaceDisplay.PlacesManager();
         for (let i = 0; i < Constants.SECTIONS.length; i++) {
             let id = Constants.SECTIONS[i];
-            this._sections[id] = new PopupMenu.PopupMenuSection({
+            this._sections[id] = new St.BoxLayout({
                 vertical: true
             });	
-            this.placesManager.connect(`${id}-updated`, () => {
+            this.placeManagerUpdatedID = this.placesManager.connect(`${id}-updated`, () => {
                 this._redisplayPlaces(id);
             });
 
             this._createPlaces(id);
-            this.externalDevicesBox.add(this._sections[id].actor);
+            this.externalDevicesBox.add(this._sections[id]);
         }
 
         //Add Application Shortcuts to menu (Software, Settings, Tweaks, Terminal)
@@ -188,9 +191,7 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
             x_expand: true,
             y_expand: true,
             y_align: Clutter.ActorAlign.END,
-            x_align: Clutter.ActorAlign.CENTER,
-            x_fill: true,
-            y_fill: true
+            x_align: Clutter.ActorAlign.CENTER
         });
         this.actionsScrollBox.set_policy(Gtk.PolicyType.EXTERNAL, Gtk.PolicyType.NEVER);
         this.actionsScrollBox.clip_to_allocation = true;
@@ -224,38 +225,133 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         let rightPanelWidth = this._settings.get_int('right-panel-width');
         this.rightBox.style = "width: " + rightPanelWidth + "px;";
         this.shortcutsScrollBox.style = "width: " + rightPanelWidth + "px;";
-
-        this.loadCategories();
+        
         this.loadFavorites();
+        this.loadCategories();
         this.setDefaultMenuView(); 
     }
 
     loadCategories(){
         this.categoryDirectories = null;
         this.categoryDirectories = new Map();
-        
-        let categoryMenuItem = new MW.CategoryMenuItem(this, Constants.CategoryType.FREQUENT_APPS);
-        this.categoryDirectories.set(Constants.CategoryType.FREQUENT_APPS, categoryMenuItem);
-        let mostUsed = Shell.AppUsage.get_default().get_most_used();
-        for (let i = 0; i < mostUsed.length; i++) {
-            if (mostUsed[i] && mostUsed[i].get_app_info().should_show())
-                categoryMenuItem.appList.push(mostUsed[i]);
-        }
+
+        let extraCategories = this._settings.get_value("extra-categories").deep_unpack();
+        let defaultMenuView = this._settings.get_enum('default-menu-view');
+
+        for(let i = 0; i < extraCategories.length; i++){
+            let categoryEnum = extraCategories[i][0];
+            let shouldShow = extraCategories[i][1];
+            //If ArcMenu layout set to "Pinned Apps" default view and Extra Categories "Pinned Apps" is enabled,
+            //do not display "Pinned Apps" as an extra category -- Same for "Frequent Apps"
+            if(categoryEnum == Constants.CategoryType.PINNED_APPS && shouldShow && defaultMenuView === Constants.DefaultMenuView.PINNED_APPS)
+                shouldShow = false;
+            if(categoryEnum == Constants.CategoryType.FREQUENT_APPS && shouldShow && defaultMenuView === Constants.DefaultMenuView.FREQUENT_APPS)
+                shouldShow = false;
+            if(shouldShow){
+                let categoryMenuItem = new MW.CategoryMenuItem(this, categoryEnum);
+                this.categoryDirectories.set(categoryEnum, categoryMenuItem);
+            }
+        }        
 
         super.loadCategories();
     }
 
+    displayFavorites(){
+        this.activeCategoryType = Constants.CategoryType.PINNED_APPS;
+        let defaultMenuView = this._settings.get_enum('default-menu-view');
+        if(defaultMenuView === Constants.DefaultMenuView.PINNED_APPS){
+            this.viewProgramsButton.actor.show();
+            this.backButton.actor.hide();
+        }
+        else if (defaultMenuView === Constants.DefaultMenuView.CATEGORIES_LIST){
+            this.viewProgramsButton.actor.hide();
+            this.backButton.actor.show();
+        }
+        else if (defaultMenuView === Constants.DefaultMenuView.FREQUENT_APPS){
+            this.viewProgramsButton.actor.show();
+            this.backButton.actor.hide();
+        }
+        super.displayFavorites();
+    }
+
+    displayAllApps(){
+        super.displayAllApps();
+        this.backButton.actor.show();
+        this.viewProgramsButton.actor.hide();  
+    }
+
+    displayCategories(){
+        this.activeCategoryType = Constants.CategoryType.CATEGORIES_LIST;
+        let defaultMenuView = this._settings.get_enum('default-menu-view');
+        if(defaultMenuView === Constants.DefaultMenuView.PINNED_APPS || defaultMenuView === Constants.DefaultMenuView.FREQUENT_APPS){
+            this.viewProgramsButton.actor.hide();
+            this.backButton.actor.show();
+        }
+        else{
+            this.viewProgramsButton.actor.show();
+            this.backButton.actor.hide();
+        }
+        
+        super.displayCategories();
+    }
+
     setDefaultMenuView(){
         super.setDefaultMenuView();
-        if(this._settings.get_boolean('enable-pinned-apps')){
-            this.currentMenu = Constants.CURRENT_MENU.FAVORITES;
+        let defaultMenuView = this._settings.get_enum('default-menu-view');
+        if(defaultMenuView === Constants.DefaultMenuView.PINNED_APPS)
             this.displayFavorites();
-        }	
-        else{
-            this.currentMenu = Constants.CURRENT_MENU.CATEGORIES;
+        else if(defaultMenuView === Constants.DefaultMenuView.CATEGORIES_LIST)
             this.displayCategories();
-        }
+        else if(defaultMenuView === Constants.DefaultMenuView.FREQUENT_APPS)
+            this.displayFrequentApps();
+        
         this.backButton.actor.hide();
         this.viewProgramsButton.actor.show();
+    }
+
+    displayCategoryAppList(appList, category){
+        super.displayCategoryAppList(appList, category);
+        this.backButton.actor.show();
+        this.viewProgramsButton.actor.hide();
+        this.activeCategoryType = Constants.CategoryType.CATEGORY_APP_LIST; 
+    }
+
+    displayFrequentApps(){
+        this._clearActorsFromBox();
+        this.viewProgramsButton.actor.show();
+        this.backButton.actor.hide();
+        let mostUsed = Shell.AppUsage.get_default().get_most_used();
+        let appList = [];
+        for (let i = 0; i < mostUsed.length; i++) {
+            if (mostUsed[i] && mostUsed[i].get_app_info().should_show()){
+                let item = new MW.ApplicationMenuItem(this, mostUsed[i]);
+                item.forceLargeIcon();
+                appList.push(item);
+            }
+        }
+        let activeMenuItemSet = false;
+        for (let i = 0; i < appList.length; i++) {
+            let item = appList[i];
+            if(item.actor.get_parent())
+                item.actor.get_parent().remove_actor(item.actor);
+            if (!item.actor.get_parent()) 
+                this.applicationsBox.add_actor(item.actor);
+            if(!activeMenuItemSet){
+                activeMenuItemSet = true;  
+                this.activeMenuItem = item;
+                if(this.arcMenu.isOpen){
+                    this.mainBox.grab_key_focus();
+                }
+            }    
+        }
+    }
+
+    _onSearchBoxChanged(searchBox, searchString){  
+        super._onSearchBoxChanged(searchBox, searchString);  
+        if(!searchBox.isEmpty()){  
+            this.backButton.actor.show();
+            this.viewProgramsButton.actor.hide(); 
+            this.activeCategoryType = Constants.CategoryType.SEARCH_RESULTS;   
+        }            
     }
 }

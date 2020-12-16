@@ -29,6 +29,7 @@ const BaseMenuLayout = Me.imports.menulayouts.baseMenuLayout;
 const Constants = Me.imports.constants;
 const Gettext = imports.gettext.domain(Me.metadata['gettext-domain']);
 const MW = Me.imports.menuWidgets;
+const PopupMenu = imports.ui.popupMenu;
 const _ = Gettext.gettext;
 
 var createMenu = class extends BaseMenuLayout.BaseLayout{
@@ -42,10 +43,10 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
 
     createLayout(){
         this.mainBox.style = null;
-        
+        this.loadFavorites();
         this.loadCategories();
         this._display(); 
-        this.leftClickMenu.actor.style = 'max-height: ' + (this.leftClickMenu.actor.height + 250) + 'px;';
+        this.arcMenu.actor.style = 'max-height: ' + (this.arcMenu.actor.height + 250) + 'px;';
     }
 
     setDefaultMenuView(){
@@ -67,16 +68,21 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         this.categoryDirectories = null;
         this.categoryDirectories = new Map();
 
-        let categoryMenuItem = new MW.CategorySubMenuItem(this, Constants.CategoryType.FAVORITES);
-        this.categoryDirectories.set(Constants.CategoryType.FAVORITES, categoryMenuItem);
+        let extraCategories = this._settings.get_value("extra-categories").deep_unpack();
 
-        categoryMenuItem = new MW.CategorySubMenuItem(this, Constants.CategoryType.ALL_PROGRAMS);
-        this.categoryDirectories.set(Constants.CategoryType.ALL_PROGRAMS, categoryMenuItem);
+        for(let i = 0; i < extraCategories.length; i++){
+            let categoryEnum = extraCategories[i][0];
+            let shouldShow = extraCategories[i][1];
+            if(shouldShow){
+                let categoryMenuItem = new MW.CategorySubMenuItem(this, categoryEnum);
+                this.categoryDirectories.set(categoryEnum, categoryMenuItem);
+            }
+        }        
 
         super.loadCategories(MW.CategorySubMenuItem);
 
         for(let categoryMenuItem of this.categoryDirectories.values()){
-            categoryMenuItem._setParent(this.leftClickMenu);  
+            categoryMenuItem._setParent(this.arcMenu);  
             categoryMenuItem.isSimpleMenuItem = true;
         }
     }
@@ -85,12 +91,11 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         this._clearActorsFromBox();
         let isActiveMenuItemSet = false;
         for(let categoryMenuItem of this.categoryDirectories.values()){
-            this.mainBox.add_actor(categoryMenuItem.actor);	
-            this.mainBox.add_actor(categoryMenuItem.menu.actor);
+            this.arcMenu.addMenuItem(categoryMenuItem);
             if(!isActiveMenuItemSet){
                 isActiveMenuItemSet = true;
                 this.activeMenuItem = categoryMenuItem;
-                if(this.leftClickMenu.isOpen){
+                if(this.arcMenu.isOpen){
                     this.mainBox.grab_key_focus();
                 }
             }	 
@@ -101,11 +106,38 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         super._clearActorsFromBox(this.mainBox);
     }
 
-    displayCategoryAppList(appList, categoryMenuItem){
-        this._displayAppList(appList, categoryMenuItem);
+    displayCategoryAppList(appList, categoryMenuItem, category){
+        this._displayAppList(appList, categoryMenuItem, category);
     }
 
-    _displayAppList(apps, categoryMenuItem) {
+    displayFavorites() {
+        let categoryMenuItem = this.categoryDirectories.get(Constants.CategoryType.PINNED_APPS);
+        if(categoryMenuItem){
+            let children = categoryMenuItem.menu.box.get_children();
+            for (let i = 0; i < children.length; i++) {
+                let actor = children[i];
+                if(actor._delegate instanceof MW.CategorySubMenuItem)
+                    actor._delegate.menu.close();
+                    categoryMenuItem.menu.box.remove_actor(actor);
+            }
+            for(let i = 0;i < this.favoritesArray.length; i++){
+                categoryMenuItem.menu.box.add_actor(this.favoritesArray[i].actor);	
+                if(!this.favoritesArray[i].shouldShow)
+                    this.favoritesArray[i].actor.hide();
+                if(i==0){
+                    this.activeMenuItem = this.favoritesArray[i];
+                    if(this.arcMenu.isOpen){
+                        this.mainBox.grab_key_focus();
+                    }
+                }	   
+            }
+        } 
+    }
+
+    _displayAppList(apps, categoryMenuItem, displayAllApps) {
+        let currentCharacter;
+        let needsNewSeparator = false; 
+        let listByCharacter = this._settings.get_boolean("alphabetize-all-programs");
         if (apps) {
             let children = categoryMenuItem.menu.box.get_children();
             for (let i = 0; i < children.length; i++) {
@@ -114,6 +146,25 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
             }
             for (let i = 0; i < apps.length; i++) {
                 let app = apps[i];
+                if(listByCharacter && displayAllApps){
+                    if(currentCharacter !== app.get_name().charAt(0).toLowerCase()){
+                        currentCharacter = app.get_name().charAt(0).toLowerCase();
+                        needsNewSeparator = true;
+                    }
+                    else{
+                        needsNewSeparator = false;
+                    }
+                    if(needsNewSeparator){
+                        let characterLabel = new PopupMenu.PopupMenuItem(currentCharacter.toUpperCase(), {
+                            hover: false,
+                            can_focus: false
+                        });  
+                        characterLabel.actor.add_style_pseudo_class = () => { return false;};
+                        characterLabel.actor.add(this._createHorizontalSeparator(Constants.SEPARATOR_STYLE.LONG));
+                        characterLabel.label.style = 'font-weight: bold;';
+                        categoryMenuItem.menu.box.add_actor(characterLabel.actor)
+                    }
+                }
                 let item = this.applicationsMap.get(app);
                 if (!item) {
                     item = new MW.ApplicationMenuItem(this, app);
@@ -126,7 +177,6 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
                     categoryMenuItem.menu.box.add(item.actor);
                 }
                 if(i==0){
-                    item.setFakeActive(true);
                     item.grabKeyFocus();
                 }
             }
@@ -134,7 +184,7 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
     }
 
     destroy(isReload){
-        this.leftClickMenu.actor.style = null;
+        this.arcMenu.actor.style = null;
         super.destroy(isReload);
     }
 }

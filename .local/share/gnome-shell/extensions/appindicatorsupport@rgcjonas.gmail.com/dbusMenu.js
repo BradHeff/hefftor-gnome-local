@@ -38,7 +38,7 @@ const Util = Extension.imports.util
 var PropertyStore = class AppIndicators_PropertyStore {
 
     constructor(initial_properties) {
-        this._props = {}
+        this._props = new Map();
 
         if (initial_properties) {
             for (let i in initial_properties) {
@@ -51,14 +51,15 @@ var PropertyStore = class AppIndicators_PropertyStore {
         if (name in PropertyStore.MandatedTypes && value && !value.is_of_type(PropertyStore.MandatedTypes[name]))
             Util.Logger.warn("Cannot set property "+name+": type mismatch!")
         else if (value)
-            this._props[name] = value
+            this._props.set(name, value);
         else
-            delete this._props[name]
+            this._props.delete(name);
     }
 
     get(name) {
-        if (name in this._props)
-            return this._props[name]
+        let prop = this._props.get(name);
+        if (prop)
+            return prop;
         else if (name in PropertyStore.DefaultValues)
             return PropertyStore.DefaultValues[name]
         else
@@ -175,9 +176,7 @@ var DbusMenuItem = class AppIndicators_DbusMenuItem {
     }
 
     get_children() {
-        return this._children_ids.map((el) => {
-            return this._client.get_item(el)
-        }, this)
+        return this._children_ids.map(el => this._client.get_item(el));
     }
 
     handle_event(event, data, timestamp) {
@@ -206,8 +205,20 @@ const BusClientProxy = Gio.DBusProxy.makeProxyWrapper(DBusInterfaces.DBusMenu);
 var DBusClient = class AppIndicators_DBusClient {
 
     constructor(busName, busPath) {
-        this._proxy = new BusClientProxy(Gio.DBus.session, busName, busPath, this._clientReady.bind(this))
-        this._items = { 0: new DbusMenuItem(this, 0, { 'children-display': GLib.Variant.new_string('submenu') }, []) }
+        this._cancellable = new Gio.Cancellable();
+        this._proxy = new BusClientProxy(Gio.DBus.session,
+            busName,
+            busPath,
+            this._clientReady.bind(this),
+            this._cancellable)
+        this._items = new Map([
+            [
+                0,
+                new DbusMenuItem(this, 0, {
+                    'children-display': GLib.Variant.new_string('submenu'),
+                }, []),
+            ]
+        ]);
 
         // will be set to true if a layout update is requested while one is already in progress
         // then the handler that completes the layout update will request another update
@@ -215,7 +226,7 @@ var DBusClient = class AppIndicators_DBusClient {
         this._flagLayoutUpdateInProgress = false
 
         // property requests are queued
-        this._propertiesRequestedFor = [ /* ids */ ]
+        this._propertiesRequestedFor = new Set(/* ids */);
 
         Util.connectSmart(this._proxy, 'notify::g-name-owner', this, () => {
             if (this.isReady)
@@ -228,7 +239,7 @@ var DBusClient = class AppIndicators_DBusClient {
     }
 
     get_root() {
-        return this._items[0]
+        return this._items.get(0);
     }
 
     _requestLayoutUpdate() {
@@ -240,36 +251,43 @@ var DBusClient = class AppIndicators_DBusClient {
 
     _requestProperties(id) {
         // if we don't have any requests queued, we'll need to add one
-        if (this._propertiesRequestedFor.length < 1)
-            GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, this._beginRequestProperties.bind(this))
+        if (!this._propertiesRequestId) {
+            this._propertiesRequestId = GLib.idle_add(
+                GLib.PRIORITY_DEFAULT_IDLE, () => this._beginRequestProperties())
+        }
 
-        if (this._propertiesRequestedFor.filter((e) => { return e === id }).length == 0)
-            this._propertiesRequestedFor.push(id)
-
+        this._propertiesRequestedFor.add(id);
     }
 
     _beginRequestProperties() {
-        this._proxy.GetGroupPropertiesRemote(this._propertiesRequestedFor, [], this._endRequestProperties.bind(this))
+        this._proxy.GetGroupPropertiesRemote(
+                Array.from(this._propertiesRequestedFor),
+                [],
+                this._cancellable,
+                this._endRequestProperties.bind(this))
 
-        this._propertiesRequestedFor = []
+        this._propertiesRequestedFor.clear();
+        delete this._propertiesRequestId;
 
         return false
     }
 
     _endRequestProperties(result, error) {
         if (error) {
-            Util.Logger.warn("Could not retrieve properties: "+error)
+            if (!error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                Util.Logger.warn(`Could not retrieve properties: ${error}`);
             return
         }
 
         // for some funny reason, the result array is hidden in an array
         result[0].forEach(([id, properties]) => {
-            if (!(id in this._items))
+            let item = this._items.get(id);
+            if (!item)
                 return
 
             for (let prop in properties)
-                this._items[id].property_set(prop, properties[prop])
-        }, this)
+                item.property_set(prop, properties[prop])
+        });
     }
 
     // Traverses the list of cached menu items and removes everyone that is not in the list
@@ -284,9 +302,10 @@ var DBusClient = class AppIndicators_DBusClient {
             Array.prototype.push.apply(toTraverse, item.get_children_ids())
         }
 
-        for (let i in this._items)
-            if (this._items[i]._dbusClientGcTag != tag)
-                delete this._items[i]
+        this._items.forEach((i, id) => {
+            if (i._dbusClientGcTag != tag)
+                this._items.delete(id);
+        });
     }
 
     // the original implementation will only request partial layouts if somehow possible
@@ -294,7 +313,10 @@ var DBusClient = class AppIndicators_DBusClient {
     _beginLayoutUpdate() {
         // we only read the type property, because if the type changes after reading all properties,
         // the view would have to replace the item completely which we try to avoid
-        this._proxy.GetLayoutRemote(0, -1, [ 'type', 'children-display' ], this._endLayoutUpdate.bind(this))
+        this._proxy.GetLayoutRemote(0, -1,
+            [ 'type', 'children-display' ],
+            this._cancellable,
+            this._endLayoutUpdate.bind(this))
 
         this._flagLayoutUpdateRequired = false
         this._flagLayoutUpdateInProgress = true
@@ -302,7 +324,8 @@ var DBusClient = class AppIndicators_DBusClient {
 
     _endLayoutUpdate(result, error) {
         if (error) {
-            Util.Logger.warn("While reading menu layout on proxy '"+this._proxy.g_name_owner+": "+error)
+            if (!error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                Util.Logger.warn(`While reading menu layout on proxy ${this._proxy.g_name_owner}: ${error}`);
             return
         }
 
@@ -319,45 +342,46 @@ var DBusClient = class AppIndicators_DBusClient {
     _doLayoutUpdate(item) {
         let [ id, properties, children ] = item
 
-        let children_unpacked = children.map((child) => { return child.deep_unpack() })
-        let children_ids = children_unpacked.map((child) => { return child[0] })
+        let childrenUnpacked = children.map(c => c.deep_unpack())
+        let childrenIds = childrenUnpacked.map(c => c[0])
 
         // make sure all our children exist
-        children_unpacked.forEach(this._doLayoutUpdate, this)
+        childrenUnpacked.forEach(c => this._doLayoutUpdate(c));
 
         // make sure we exist
-        if (id in this._items) {
+        const menuItem = this._items.get(id);
+        if (menuItem) {
             // we do, update our properties if necessary
             for (let prop in properties) {
-                this._items[id].property_set(prop, properties[prop])
+                menuItem.property_set(prop, properties[prop])
             }
 
             // make sure our children are all at the right place, and exist
-            let old_children_ids = this._items[id].get_children_ids()
-            for (let i = 0; i < children_ids.length; ++i) {
+            let oldChildrenIds = menuItem.get_children_ids()
+            for (let i = 0; i < childrenIds.length; ++i) {
                 // try to recycle an old child
-                let old_child = -1
-                for (let j = 0; j < old_children_ids.length; ++j) {
-                    if (old_children_ids[j] == children_ids[i]) {
-                        old_child = old_children_ids.splice(j, 1)[0]
+                let oldChild = -1
+                for (let j = 0; j < oldChildrenIds.length; ++j) {
+                    if (oldChildrenIds[j] == childrenIds[i]) {
+                        oldChild = oldChildrenIds.splice(j, 1)[0]
                         break
                     }
                 }
 
-                if (old_child < 0) {
+                if (oldChild < 0) {
                     // no old child found, so create a new one!
-                    this._items[id].add_child(i, children_ids[i])
+                    menuItem.add_child(i, childrenIds[i])
                 } else {
                     // old child found, reuse it!
-                    this._items[id].move_child(children_ids[i], i)
+                    menuItem.move_child(childrenIds[i], i)
                 }
             }
 
             // remove any old children that weren't reused
-            old_children_ids.forEach((child_id) => { this._items[id].remove_child(child_id) }, this)
+            oldChildrenIds.forEach(child_id => menuItem.remove_child(child_id));
         } else {
             // we don't, so let's create us
-            this._items[id] = new DbusMenuItem(this, id, properties, children_ids)
+            this._items.set(id, new DbusMenuItem(this, id, properties, childrenIds));
             this._requestProperties(id)
         }
 
@@ -366,7 +390,8 @@ var DBusClient = class AppIndicators_DBusClient {
 
     _clientReady(result, error) {
         if (error) {
-            Util.Logger.warn("Could not initialize menu proxy: "+error)
+            if (!error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                Util.Logger.warn(`Could not initialize menu proxy: ${error}`);
             return;
         }
 
@@ -378,11 +403,10 @@ var DBusClient = class AppIndicators_DBusClient {
     }
 
     get_item(id) {
-        if (id in this._items)
-            return this._items[id]
-
-        Util.Logger.warn("trying to retrieve item for non-existing id "+id+" !?")
-        return null
+        let item = this._items.get(id);
+        if (!item)
+            Util.Logger.warn(`trying to retrieve item for non-existing id ${id} !?`);
+        return item || null;
     }
 
     // we don't need to cache and burst-send that since it will not happen that frequently
@@ -411,7 +435,8 @@ var DBusClient = class AppIndicators_DBusClient {
         if (!this._proxy)
             return
 
-        this._proxy.EventRemote(id, event, params, timestamp, function(result, error) { /* we don't care */ })
+        this._proxy.EventRemote(id, event, params, timestamp, this._cancellable,
+            () => { /* we don't care */ })
     }
 
     _onLayoutUpdated() {
@@ -420,25 +445,31 @@ var DBusClient = class AppIndicators_DBusClient {
 
     _onPropertiesUpdated(proxy, name, [changed, removed]) {
         changed.forEach(([id, props]) => {
-            if (!(id in this._items))
+            let item = this._items.get(id);
+            if (!item)
                 return
 
             for (let prop in props)
-                this._items[id].property_set(prop, props[prop])
-        }, this)
+                item.property_set(prop, props[prop])
+        });
         removed.forEach(([id, propNames]) => {
-            if (!(id in this._items))
+            let item = this._items.get(id);
+            if (!item)
                 return
 
-            propNames.forEach((propName) => {
-                this._items[id].property_set(propName, null)
-            }, this)
-        }, this)
+            propNames.forEach(propName => item.property_set(propName, null));
+        });
     }
 
     destroy() {
         this.emit('destroy')
 
+        if (this._propertiesRequestId) {
+            GLib.Source.remove(this._propertiesRequestId);
+            delete this._propertiesRequestId;
+        }
+
+        this._cancellable.cancel();
         Signals._disconnectAll.apply(this._proxy)
 
         this._proxy = null
@@ -722,9 +753,9 @@ var Client = class AppIndicators_Client {
         this._rootItem.send_about_to_show()
 
         // fill the menu for the first time
-        this._rootItem.get_children().forEach((child) => {
+        this._rootItem.get_children().forEach(child =>
             this._rootMenu.addMenuItem(MenuItemFactory.createItem(this, child))
-        }, this)
+        );
     }
 
     _setOpenedSubmenu(submenu) {

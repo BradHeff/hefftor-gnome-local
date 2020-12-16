@@ -59,6 +59,9 @@ const T4 = 'overviewWindowDragEndTimeout';
 const T5 = 'switchWorkspaceTimeout';
 const T6 = 'displayProperIndicatorTimeout';
 
+//right padding defined for .overview-label in stylesheet.css
+const TITLE_RIGHT_PADDING = 8;
+
 let LABEL_GAP = 5;
 let MAX_INDICATORS = 4;
 var DEFAULT_PADDING_SIZE = 4;
@@ -147,7 +150,7 @@ var taskbarAppIcon = Utils.defineClass({
         
         this._container = new St.Widget({ style_class: 'dtp-container', layout_manager: new Clutter.BinLayout() });
         this._dotsContainer = new St.Widget({ layout_manager: new Clutter.BinLayout() });
-        this._dtpIconContainer = new St.Widget({ layout_manager: new Clutter.BinLayout(), style: getIconContainerStyle() });
+        this._dtpIconContainer = new St.Widget({ layout_manager: new Clutter.BinLayout(), style: getIconContainerStyle(panel.checkIfVertical()) });
 
         this.actor.remove_actor(this._iconContainer);
         
@@ -165,7 +168,7 @@ var taskbarAppIcon = Utils.defineClass({
             this._updateWindowTitle();
             this._updateWindowTitleStyle();
 
-            this._scaleFactorChangedId = St.ThemeContext.get_for_stage(global.stage).connect('changed', () => this._updateWindowTitleStyle());
+            this._scaleFactorChangedId = Utils.getStageTheme().connect('changed', () => this._updateWindowTitleStyle());
 
             box.add_child(this._dtpIconContainer);
             box.add_child(this._windowTitle);
@@ -178,7 +181,7 @@ var taskbarAppIcon = Utils.defineClass({
         this._container.add_child(this._dotsContainer);
         this.actor.set_child(this._container);
 
-        if (Panel.checkIfVertical()) {
+        if (panel.checkIfVertical()) {
             this.actor.set_width(panel.geom.w);
         }
 
@@ -205,9 +208,13 @@ var taskbarAppIcon = Utils.defineClass({
             }
             
             this._titleWindowChangeId = 0;
+            this._minimizedWindowChangeId = 0;
         } else {
             this._titleWindowChangeId = this.window.connect('notify::title', 
                                                 Lang.bind(this, this._updateWindowTitle));
+
+            this._minimizedWindowChangeId = this.window.connect('notify::minimized',
+                                                Lang.bind(this, this._updateWindowTitleStyle));
         }
         
         this._scrollEventId = this.actor.connect('scroll-event', this._onMouseScroll.bind(this));
@@ -243,6 +250,7 @@ var taskbarAppIcon = Utils.defineClass({
             Me.settings.connect('changed::group-apps-label-font-size', Lang.bind(this, this._updateWindowTitleStyle)),
             Me.settings.connect('changed::group-apps-label-font-weight', Lang.bind(this, this._updateWindowTitleStyle)),
             Me.settings.connect('changed::group-apps-label-font-color', Lang.bind(this, this._updateWindowTitleStyle)),
+            Me.settings.connect('changed::group-apps-label-font-color-minimized', Lang.bind(this, this._updateWindowTitleStyle)),
             Me.settings.connect('changed::group-apps-label-max-width', Lang.bind(this, this._updateWindowTitleStyle)),
             Me.settings.connect('changed::group-apps-use-fixed-width', Lang.bind(this, this._updateWindowTitleStyle)),
             Me.settings.connect('changed::group-apps-underline-unfocused', Lang.bind(this, this._settingsChangeRefresh))
@@ -304,6 +312,9 @@ var taskbarAppIcon = Utils.defineClass({
         if(this._titleWindowChangeId)
             this.window.disconnect(this._titleWindowChangeId);
 
+        if(this._minimizedWindowChangeId)
+            this.window.disconnect(this._minimizedWindowChangeId);
+
         if (this._windowEnteredMonitorId) {
             Utils.DisplayWrapper.getScreen().disconnect(this._windowEnteredMonitorId);
             Utils.DisplayWrapper.getScreen().disconnect(this._windowLeftMonitorId);
@@ -313,7 +324,7 @@ var taskbarAppIcon = Utils.defineClass({
             global.window_manager.disconnect(this._switchWorkspaceId);
 
         if(this._scaleFactorChangedId)
-            St.ThemeContext.get_for_stage(global.stage).disconnect(this._scaleFactorChangedId);
+            Utils.getStageTheme().disconnect(this._scaleFactorChangedId);
 
         if (this._hoverChangeId) {
             this.actor.disconnect(this._hoverChangeId);
@@ -338,6 +349,10 @@ var taskbarAppIcon = Utils.defineClass({
             this._updateWindows();
             this._displayProperIndicator();
         }
+    },
+
+    updateTitleStyle: function() {
+        this._updateWindowTitleStyle();
     },
 
     // Update indicator and target for minimization animation
@@ -467,18 +482,25 @@ var taskbarAppIcon = Utils.defineClass({
     _updateWindowTitleStyle: function() {
         if (this._windowTitle) {
             let useFixedWidth = Me.settings.get_boolean('group-apps-use-fixed-width');
-            let maxLabelWidth = Me.settings.get_int('group-apps-label-max-width') * 
-                                St.ThemeContext.get_for_stage(global.stage).scale_factor;
+            let variableWidth = !useFixedWidth || this.dtpPanel.checkIfVertical() || this.dtpPanel.taskbar.fullScrollView;
             let fontWeight = Me.settings.get_string('group-apps-label-font-weight');
-            
+            let fontScale = Me.desktopSettings.get_double('text-scaling-factor');
+            let fontColor = this.window.minimized ?
+                            Me.settings.get_string('group-apps-label-font-color-minimized') :
+                            Me.settings.get_string('group-apps-label-font-color');
+            let scaleFactor = Utils.getScaleFactor();
+            let maxLabelWidth = Me.settings.get_int('group-apps-label-max-width') * scaleFactor;
+
             this._windowTitle[(maxLabelWidth > 0 ? 'show' : 'hide')]();
 
             this._windowTitle.clutter_text.natural_width = useFixedWidth ? maxLabelWidth : 0;
             this._windowTitle.clutter_text.natural_width_set = useFixedWidth;
-            this._windowTitle.set_style('font-size: ' + Me.settings.get_int('group-apps-label-font-size') + 'px;' +
+            this._windowTitle.set_width(variableWidth ? -1 : maxLabelWidth + TITLE_RIGHT_PADDING * scaleFactor);
+
+            this._windowTitle.set_style('font-size: ' + Me.settings.get_int('group-apps-label-font-size') * fontScale + 'px;' +
                                         'font-weight: ' + fontWeight + ';' +
                                         (useFixedWidth ? '' : 'max-width: ' + maxLabelWidth + 'px;') + 
-                                        'color: ' + Me.settings.get_string('group-apps-label-font-color'));
+                                        'color: ' + fontColor);
         }
     },
 
@@ -504,7 +526,7 @@ var taskbarAppIcon = Utils.defineClass({
             let highlightMargin = isWide ? Me.settings.get_int('dot-size') : 0;
 
             if(!this.window) {
-                let containerWidth = this._dtpIconContainer.get_width() / St.ThemeContext.get_for_stage(global.stage).scale_factor;
+                let containerWidth = this._dtpIconContainer.get_width() / Utils.getScaleFactor();;
                 let backgroundSize = containerWidth + "px " + 
                                      (containerWidth - (pos == DOT_POSITION.BOTTOM ? highlightMargin : 0)) + "px;";
 
@@ -515,7 +537,7 @@ var taskbarAppIcon = Utils.defineClass({
                     let bgSvg = '/img/highlight_stacked_bg';
 
                     if (pos == DOT_POSITION.LEFT || pos == DOT_POSITION.RIGHT) {
-                        bgSvg += (Panel.checkIfVertical() ? '_2' : '_3');
+                        bgSvg += (this.dtpPanel.checkIfVertical() ? '_2' : '_3');
                     }
 
                     inlineStyle += "background-image: url('" + Me.path + bgSvg + ".svg');" + 
@@ -554,7 +576,7 @@ var taskbarAppIcon = Utils.defineClass({
         let padding = getIconPadding();
         let margin = Me.settings.get_int('appicon-margin');
         
-        this.actor.set_style('padding:' + (Panel.checkIfVertical() ? margin + 'px 0' : '0 ' + margin + 'px;'));
+        this.actor.set_style('padding:' + (this.dtpPanel.checkIfVertical() ? margin + 'px 0' : '0 ' + margin + 'px;'));
         this._iconContainer.set_style('padding: ' + padding + 'px;');
     },
 
@@ -567,7 +589,7 @@ var taskbarAppIcon = Utils.defineClass({
         }
 
         if (!this._menu) {
-            this._menu = new taskbarSecondaryMenu(this);
+            this._menu = new taskbarSecondaryMenu(this, this.dtpPanel);
             this._menu.connect('activate-window', Lang.bind(this, function (menu, window) {
                 this.activateWindow(window, Me.settings);
             }));
@@ -696,16 +718,15 @@ var taskbarAppIcon = Utils.defineClass({
             let tweenOpts = { 
                 time: Taskbar.DASH_ANIMATION_TIME,
                 transition: 'easeInOutCubic',
-                onStart: Lang.bind(this, function() { 
-                    if(newOtherOpacity == 0)
-                        otherDots.opacity = newOtherOpacity;
-                }),
                 onComplete: Lang.bind(this, function() { 
                     if(newOtherOpacity > 0)
                         otherDots.opacity = newOtherOpacity;
                     dots._tweeningToSize = null;
                 })
             };
+
+            if(newOtherOpacity == 0)
+                otherDots.opacity = newOtherOpacity;
 
             tweenOpts[sizeProp] = newSize;
             dots._tweeningToSize = newSize;
@@ -949,7 +970,7 @@ var taskbarAppIcon = Utils.defineClass({
     },
 
     _getRunningIndicatorSize: function() {
-        return Me.settings.get_int('dot-size') * St.ThemeContext.get_for_stage(global.stage).scale_factor;
+        return Me.settings.get_int('dot-size') * Utils.getScaleFactor();
     },
 
     _getRunningIndicatorColor: function(isFocused) {
@@ -1156,11 +1177,10 @@ var taskbarAppIcon = Utils.defineClass({
         // We apply an overall scale factor that might come from a HiDPI monitor.
         // Clutter dimensions are in physical pixels, but CSS measures are in logical
         // pixels, so make sure to consider the scale.
-        let scaleFactor = St.ThemeContext.get_for_stage(global.stage).scale_factor;
         // Set the font size to something smaller than the whole icon so it is
         // still visible. The border radius is large to make the shape circular
         let [minWidth, natWidth] = this._dtpIconContainer.get_preferred_width(-1);
-        let font_size =  Math.round(Math.max(12, 0.3 * natWidth) / scaleFactor);
+        let font_size =  Math.round(Math.max(12, 0.3 * natWidth) / Utils.getScaleFactor());
         let size = Math.round(font_size * 1.3);
         let label = bin.child;
         let style = 'font-size: ' + font_size + 'px;' +
@@ -1205,22 +1225,8 @@ var taskbarAppIcon = Utils.defineClass({
     getAppIconInterestingWindows: function(isolateMonitors) {
         return getInterestingWindows(this.app, this.dtpPanel.monitor, isolateMonitors);
     }
-
 });
 taskbarAppIcon.prototype.scaleAndFade = taskbarAppIcon.prototype.undoScaleAndFade = () => {};
-
-function getIconContainerStyle() {
-    let style = 'padding: ';
-    let isVertical = Panel.checkIfVertical();
-
-    if (Me.settings.get_boolean('group-apps')) {
-        style += (isVertical ? '0;' : '0 ' + DEFAULT_PADDING_SIZE + 'px;');
-    } else {
-        style += (isVertical ? '' : '0 ') + DEFAULT_PADDING_SIZE + 'px;';
-    }
-
-    return style;
-}
 
 function minimizeWindow(app, param, monitor){
     // Param true make all app windows minimize
@@ -1384,13 +1390,13 @@ var taskbarSecondaryMenu = Utils.defineClass({
     Extends: AppDisplay.AppIconMenu,
     ParentConstrParams: [[0]],
 
-    _init: function(source) {
+    _init: function(source, panel) {
         // Damm it, there has to be a proper way of doing this...
         // As I can't call the parent parent constructor (?) passing the side
         // parameter, I overwite what I need later
         this.callParent('_init', source);
 
-        let side = Panel.getPosition();
+        let side = panel.getPosition();
         // Change the initialized side where required.
         this._arrowSide = side;
         this._boxPointer._arrowSide = side;
@@ -1525,7 +1531,7 @@ function ItemShowLabel()  {
     let labelWidth = this.label.get_width();
     let labelHeight = this.label.get_height();
 
-    let position = Panel.getPosition();
+    let position = this._dtpPanel.getPosition();
     let labelOffset = node.get_length('-x-offset');
 
     let xOffset = Math.floor((itemWidth - labelWidth) / 2);
@@ -1588,7 +1594,7 @@ function ItemShowLabel()  {
 var ShowAppsIconWrapper = Utils.defineClass({
     Name: 'DashToPanel.ShowAppsIconWrapper',
 
-    _init: function() {
+    _init: function(dtpPanel) {
         this.realShowAppsIcon = new Dash.ShowAppsIcon();
 
         Utils.wrapActor(this.realShowAppsIcon);
@@ -1619,6 +1625,7 @@ var ShowAppsIconWrapper = Utils.defineClass({
         this._menuManager = new PopupMenu.PopupMenuManager(this.actor);
         this._menuTimeoutId = 0;
 
+        this.realShowAppsIcon._dtpPanel = dtpPanel;
         Taskbar.extendDashItemContainer(this.realShowAppsIcon);
 
         let customIconPath = Me.settings.get_string('show-apps-icon-file');
@@ -1632,7 +1639,7 @@ var ShowAppsIconWrapper = Utils.defineClass({
             if (customIconPath) {
                 this._iconActor.gicon = new Gio.FileIcon({ file: Gio.File.new_for_path(customIconPath) });
             }
-            
+
             return this._iconActor;
         };
 
@@ -1679,14 +1686,14 @@ var ShowAppsIconWrapper = Utils.defineClass({
     setShowAppsPadding: function() {
         let padding = getIconPadding(); 
         let sidePadding = Me.settings.get_int('show-apps-icon-side-padding');
-        let isVertical = Panel.checkIfVertical();
+        let isVertical = this.realShowAppsIcon._dtpPanel.checkIfVertical();
 
         this.actor.set_style('padding:' + (padding + (isVertical ? sidePadding : 0)) + 'px ' + (padding + (isVertical ? 0 : sidePadding)) + 'px;');
     },
 
     createMenu: function() {
         if (!this._menu) {
-            this._menu = new MyShowAppsIconMenu(this.actor);
+            this._menu = new MyShowAppsIconMenu(this.actor, this.realShowAppsIcon._dtpPanel);
             this._menu.connect('open-state-changed', Lang.bind(this, function(menu, isPoppedUp) {
                 if (!isPoppedUp)
                     this._onMenuPoppedDown();
@@ -1725,6 +1732,8 @@ var ShowAppsIconWrapper = Utils.defineClass({
         Me.settings.disconnect(this._changedShowAppsIconId);
         Me.settings.disconnect(this._changedAppIconSidePaddingId);
         Me.settings.disconnect(this._changedAppIconPaddingId);
+
+        this.realShowAppsIcon.destroy();
     }
 });
 Signals.addSignalMethods(ShowAppsIconWrapper.prototype);
@@ -1735,7 +1744,7 @@ Signals.addSignalMethods(ShowAppsIconWrapper.prototype);
 var MyShowAppsIconMenu = Utils.defineClass({
     Name: 'DashToPanel.ShowAppsIconMenu',
     Extends: taskbarSecondaryMenu,
-    ParentConstrParams: [[0]],
+    ParentConstrParams: [[0], [1]],
 
     _dtpRedisplay: function() {
         this.removeAll();
@@ -1862,4 +1871,16 @@ adjustMenuRedisplay(MyShowAppsIconMenu.prototype);
 
 function adjustMenuRedisplay(menuProto) {
     menuProto[menuRedisplayFunc] = function() { this._dtpRedisplay(menuRedisplayFunc) };
+}
+
+var getIconContainerStyle = function(isVertical) {
+    let style = 'padding: ';
+
+    if (Me.settings.get_boolean('group-apps')) {
+        style += (isVertical ? '0;' : '0 ' + DEFAULT_PADDING_SIZE + 'px;');
+    } else {
+        style += (isVertical ? '' : '0 ') + DEFAULT_PADDING_SIZE + 'px;';
+    }
+
+    return style;
 }

@@ -4,9 +4,9 @@
   "name": "Floating Dock",
   "original-authors": "sun.wxg@gmail.com",
   "shell-version": [
-    "3.36"
+    "3.38"
   ],
   "url": "https://github.com/sunwxg/gnome-shell-extension-floatingDock",
   "uuid": "floatingDock@sun.wxg@gmail.com",
-  "version": 10
+  "version": 12
 }

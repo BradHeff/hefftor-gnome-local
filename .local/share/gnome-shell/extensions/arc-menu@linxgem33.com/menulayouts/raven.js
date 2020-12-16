@@ -33,6 +33,10 @@ const PopupMenu = imports.ui.popupMenu;
 const Utils =  Me.imports.utils;
 const _ = Gettext.gettext;
 
+const COLUMN_SPACING = 10;
+const ROW_SPACING = 10;
+const COLUMN_COUNT = 4;
+
 var createMenu = class extends BaseMenuLayout.BaseLayout{
     constructor(mainButton) {
         super(mainButton, {
@@ -48,8 +52,8 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         else
             this.activeCategory = _("All Programs");
 
-        this.leftClickMenu.actor.style = "-arrow-base:0px;-arrow-rise:0px; -boxpointer-gap: 0px;"; 
-        this.leftClickMenu.box.style = "padding-bottom:0px; padding-top:0px; margin:0px;";
+        this.arcMenu.actor.style = "-arrow-base:0px;-arrow-rise:0px; -boxpointer-gap: 0px;"; 
+        this.arcMenu.box.style = "padding-bottom:0px; padding-top:0px; margin:0px;";
         this.actionsBoxContainer = new St.BoxLayout({
             x_expand: false,
             y_expand: true,
@@ -98,13 +102,14 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
 
         this.applicationsBox = new St.BoxLayout({
             x_align: Clutter.ActorAlign.FILL,
-            vertical: true
+            vertical: true,
+            style: "padding-bottom: 10px;"
         });
 
         let layout = new Clutter.GridLayout({ 
             orientation: Clutter.Orientation.VERTICAL,
-            column_spacing: 10,
-            row_spacing: 10 
+            column_spacing: COLUMN_SPACING,
+            row_spacing: ROW_SPACING 
         });
         this.grid = new St.Widget({ 
             x_expand: true,
@@ -116,13 +121,12 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         this.applicationsScrollBox = this._createScrollBox({
             x_expand: false,
             y_expand: false,
-            x_fill:false,
-            y_fill: false,
+            x_align: Clutter.ActorAlign.START,
             y_align: Clutter.ActorAlign.START,
             overlay_scrollbars: true,
             style_class: 'vfade'
         });   
-        this.applicationsScrollBox.style = "width:400px;";    
+        this.applicationsScrollBox.style = "width:410px;";    
   
         this.applicationsScrollBox.add_actor(this.applicationsBox);
         this.subMainBox.add(this.applicationsScrollBox);
@@ -134,15 +138,15 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
             y_align: Clutter.ActorAlign.END,
             vertical: true
         });
-        this.weatherBox.style = "width:400px;"; 
+        this.weatherBox.style = "width:410px;"; 
         this._weatherItem = new MW.WeatherSection();
         this._weatherItem.style = "border-radius:4px; padding: 10px; margin: 0px 25px 25px 25px;";
-        this._weatherItem.connect("clicked", ()=> this.leftClickMenu.close());
+        this._weatherItem.connect("clicked", ()=> this.arcMenu.close());
         this._clocksItem = new MW.WorldClocksSection();
         this._clocksItem.x_expand = true;
         this._clocksItem.x_align = Clutter.ActorAlign.FILL;
         this._clocksItem.style = "border-radius:4px; padding: 10px; margin: 0px 25px 25px 25px;";
-        this._clocksItem.connect("clicked", ()=> this.leftClickMenu.close());
+        this._clocksItem.connect("clicked", ()=> this.arcMenu.close());
 
         this.weatherBox.add(this._clocksItem);
         this.weatherBox.add(this._weatherItem);
@@ -158,8 +162,8 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
 
         layout = new Clutter.GridLayout({ 
             orientation: Clutter.Orientation.VERTICAL,
-            column_spacing: 10,
-            row_spacing: 10 
+            column_spacing: COLUMN_SPACING,
+            row_spacing: ROW_SPACING
         });
         this.shortcutsGrid = new St.Widget({ 
             x_expand: true,
@@ -180,9 +184,9 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
             this.appShortcuts.push(shortcutMenuItem);
         }
 
+        this.loadFavorites();
         this.loadCategories();
         this.displayCategories();
-        this.loadFavorites();
         this.displayFavorites();
         this.setDefaultMenuView();
     }
@@ -192,8 +196,8 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         super.loadFavorites(isIconGrid);
     }
 
-    updateRunnerLocation(){       
-        let monitorIndex = Main.layoutManager.findIndexForActor(this._button.getWidget().actor);
+    updateLocation(){       
+        let monitorIndex = Main.layoutManager.findIndexForActor(this.menuButton.menuButtonWidget.actor);
         let scaleFactor = Main.layoutManager.monitors[monitorIndex].geometry_scale;
         let monitorWorkArea = Main.layoutManager.getWorkAreaForMonitor(monitorIndex);
 
@@ -208,13 +212,14 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         let homeScreen = this._settings.get_boolean('enable-ubuntu-homescreen');
         if(homeScreen){
             this.activeCategory = _("Pinned Apps");
-            this.currentMenu = Constants.CURRENT_MENU.FAVORITES;
+            this.activeCategoryType = Constants.CategoryType.HOME_SCREEN;
             this.displayFavorites();
         }
         else{
             this.activeCategory = _("All Programs");
-            this.currentMenu = Constants.CURRENT_MENU.CATEGORY_APPLIST;
-            this.displayAllApps();   
+            let isGridLayout = true;
+            this.displayAllApps(isGridLayout);   
+            this.activeCategoryType = Constants.CategoryType.ALL_PROGRAMS;
         }
     }
 
@@ -226,12 +231,12 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         addStyle ? this._clocksItem.add_style_class_name('arc-menu-action') : this._clocksItem.remove_style_class_name('arc-menu-action');
         addStyle ? this._weatherItem.add_style_class_name('arc-menu-action') : this._weatherItem.remove_style_class_name('arc-menu-action');
 
-        this.leftClickMenu.actor.style = "-arrow-base:0px; -arrow-rise:0px; -boxpointer-gap: " + gapAdjustment + "px;";
-        this.leftClickMenu.box.style = "padding-bottom:0px; padding-top:0px; margin:0px;";
+        this.arcMenu.actor.style = "-arrow-base:0px; -arrow-rise:0px; -boxpointer-gap: " + gapAdjustment + "px;";
+        this.arcMenu.box.style = "padding-bottom:0px; padding-top:0px; margin:0px;";
         for(let categoryMenuItem of this.categoryDirectories.values()){
             categoryMenuItem.updateStyle();	 
         }    
-        this.updateRunnerLocation();
+        this.updateLocation();
     }
 
     updateSearch(){
@@ -244,8 +249,18 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
         let categoryMenuItem = new MW.CategoryMenuButton(this, Constants.CategoryType.HOME_SCREEN);
         this.categoryDirectories.set(Constants.CategoryType.HOME_SCREEN, categoryMenuItem);
 
-        categoryMenuItem = new MW.CategoryMenuButton(this, Constants.CategoryType.ALL_PROGRAMS);
-        this.categoryDirectories.set(Constants.CategoryType.ALL_PROGRAMS, categoryMenuItem);
+        let extraCategories = this._settings.get_value("extra-categories").deep_unpack();
+
+        for(let i = 0; i < extraCategories.length; i++){
+            let categoryEnum = extraCategories[i][0];
+            let shouldShow = extraCategories[i][1];
+            if(categoryEnum == Constants.CategoryType.PINNED_APPS)
+                shouldShow = false;
+            if(shouldShow){
+                let categoryMenuItem = new MW.CategoryMenuButton(this, categoryEnum);
+                this.categoryDirectories.set(categoryEnum, categoryMenuItem);
+            }
+        }
 
         let isIconGrid = true;
         super.loadCategories(MW.CategoryMenuButton, isIconGrid);
@@ -258,7 +273,10 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
     }
 
     displayFavorites() {
-        this._clearActorsFromBox();
+        if(this.activeCategoryType === Constants.CategoryType.HOME_SCREEN)
+            this._clearActorsFromBox(this.applicationsBox);
+        else
+            this._clearActorsFromBox();
         this._displayAppList(this.favoritesArray, true);
         this._displayAppList(this.appShortcuts, true, this.shortcutsGrid);
         if(!this.applicationsBox.contains(this.shortcutsBox))
@@ -277,6 +295,11 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
             this.subMainBox.add(this.weatherBox);
     }
 
+    displayCategoryAppList(appList){
+        this._clearActorsFromBox();
+        this._displayAppList(appList);
+    }
+    
     _clearActorsFromBox(box) {
         if(this.subMainBox.contains(this.weatherBox)){
             this.subMainBox.remove_actor(this.weatherBox);
@@ -285,19 +308,19 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
     }
 
     _displayAppList(apps, isFavoriteMenuItem = false, differentGrid = null){  
-        if(!isFavoriteMenuItem)
-            this.currentMenu = Constants.CURRENT_MENU.CATEGORY_APPLIST;
-        else
-            this.currentMenu = Constants.CURRENT_MENU.FAVORITES;    
         let grid = differentGrid ? differentGrid : this.grid;  
         grid.remove_all_children();
-        super._displayAppGridList(apps, 3, isFavoriteMenuItem, differentGrid);
+        super._displayAppGridList(apps, COLUMN_COUNT, isFavoriteMenuItem, differentGrid);
         let favsLabel = new PopupMenu.PopupMenuItem(differentGrid ? _("Shortcuts") : _(this.activeCategory), {
             hover: false,
             can_focus: false
         });  
+        favsLabel.remove_actor(favsLabel._ornamentLabel)
+        favsLabel.actor.style = "padding-left: 10px;";
+        if(differentGrid)
+            favsLabel.actor.style += "padding-top: 20px;";
         favsLabel.actor.add_style_pseudo_class = () => { return false;};
-        favsLabel.actor.add(this._createHorizontalSeparator(Constants.SEPARATOR_STYLE.LONG));
+        favsLabel.actor.add(this._createHorizontalSeparator(Constants.SEPARATOR_STYLE.MAX));
         favsLabel.label.style = 'font-weight: bold;';
         differentGrid ? this.applicationsBox.insert_child_at_index(favsLabel.actor, 2) : this.applicationsBox.insert_child_at_index(favsLabel.actor, 0);
         this._displayAppIcons();
@@ -311,14 +334,13 @@ var createMenu = class extends BaseMenuLayout.BaseLayout{
     }
    
     destroy(isReload){
-        this.actionsBox.remove_all_children();
         if(this._clocksItem)
             this._clocksItem.destroy();
         if(this._weatherItem)
             this._weatherItem.destroy();
         
-        this.leftClickMenu.box.style = null;
-        this.leftClickMenu.actor.style = null;
+        this.arcMenu.box.style = null;
+        this.arcMenu.actor.style = null;
             
         super.destroy(isReload);
     }

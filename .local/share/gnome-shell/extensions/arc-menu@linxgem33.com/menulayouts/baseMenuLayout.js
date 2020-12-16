@@ -27,7 +27,6 @@ const {Clutter, GLib, Gio, GMenu, Gtk, Shell, St} = imports.gi;
 const AppFavorites = imports.ui.appFavorites;
 const appSys = Shell.AppSystem.get_default();
 const ArcSearch = Me.imports.search;
-const ArcGridSearch = Me.imports.searchGrid;
 const Constants = Me.imports.constants;
 const GnomeSession = imports.misc.gnomeSession;
 const Gettext = imports.gettext.domain(Me.metadata['gettext-domain']);
@@ -41,27 +40,23 @@ const Utils =  Me.imports.utils;
 //This class handles the core functionality of all the menu layouts.
 //Each menu layout extends this class.
 var BaseLayout = class {
-    constructor(mainButton, layoutProperties) {
-        this._button = mainButton;
-        this._settings = mainButton._settings;
-        this.mainBox = mainButton.mainBox; 
-        this.appMenuManager = mainButton.appMenuManager;
-        this.subMenuManager = mainButton.subMenuManager;
-        this.leftClickMenu = mainButton.leftClickMenu;
+    constructor(menuButton, layoutProperties){
+        this.menuButton = menuButton;
+        this._settings = menuButton._settings;
+        this.mainBox = menuButton.mainBox; 
+        this.contextMenuManager = menuButton.contextMenuManager;
+        this.subMenuManager = menuButton.subMenuManager;
+        this.arcMenu = menuButton.arcMenu;
+        this.section = menuButton.section;
         this.layout = this._settings.get_enum('menu-layout');
         this.layoutProperties = layoutProperties;
-
         this._session = new GnomeSession.SessionManager();
-        
-        this.currentMenu = Constants.CURRENT_MENU.FAVORITES; 
         this.isRunning = true;
+        this._focusChild = null;
         this.shouldLoadFavorites = true;
 
         if(this.layoutProperties.Search){
-            if(this.layoutProperties.SearchType == Constants.SearchType.LIST_VIEW)
-                this.newSearch = new ArcSearch.SearchResults(this);    
-            else if(this.layoutProperties.SearchType == Constants.SearchType.GRID_VIEW)
-                this.newSearch = new ArcGridSearch.SearchResults(this);  
+            this.newSearch = new ArcSearch.SearchResults(this);    
         }
 
         this._mainBoxKeyPressId = this.mainBox.connect('key-press-event', this._onMainBoxKeyPress.bind(this));
@@ -86,7 +81,14 @@ var BaseLayout = class {
         this.applicationsMap.forEach((value,key,map)=>{
             map.get(key)._updateIcon();
         });
-        this.newSearch._reset(); 
+        let categoryMenuItem = this.categoryDirectories.get(Constants.CategoryType.PINNED_APPS);
+        if(categoryMenuItem){
+            for(let favoriteMenuItem of categoryMenuItem.appList){
+                favoriteMenuItem._updateIcon();
+            }
+        }
+        if(this.layoutProperties.Search)
+            this.newSearch._reset(); 
     }
 
     resetSearch(){
@@ -124,6 +126,9 @@ var BaseLayout = class {
     reload(){
         let isReload = true;
         this.destroy(isReload);
+        if(this.layoutProperties.Search){
+            this.newSearch = new ArcSearch.SearchResults(this);    
+        }
         this.createLayout();
         this.updateStyle();
     }
@@ -191,6 +196,22 @@ var BaseLayout = class {
         if(categoryMenuItem){
             this._loadGnomeFavorites(categoryMenuItem);
         }
+        categoryMenuItem = this.categoryDirectories.get(Constants.CategoryType.FREQUENT_APPS);
+        if(categoryMenuItem){
+            let mostUsed = Shell.AppUsage.get_default().get_most_used();
+            for (let i = 0; i < mostUsed.length; i++) {
+                if (mostUsed[i] && mostUsed[i].get_app_info().should_show())
+                    categoryMenuItem.appList.push(mostUsed[i]);
+            }
+        }
+        categoryMenuItem = this.categoryDirectories.get(Constants.CategoryType.PINNED_APPS);
+        if(categoryMenuItem){
+            categoryMenuItem.appList = categoryMenuItem.appList.concat(this.favoritesArray);
+            for(let favoriteMenuItem of categoryMenuItem.appList){
+                favoriteMenuItem._updateIcon();
+            }
+        }
+            
     }
 
     _loadCategory(isIconGrid, categoryId, dir, submenuItem) {
@@ -235,7 +256,7 @@ var BaseLayout = class {
                         let submenuItem = this.applicationsMap.get(subdir);
                         if (!submenuItem) {
                             submenuItem = new MW.CategorySubMenuItem(this, subdir);
-                            submenuItem._setParent(this.leftClickMenu);
+                            submenuItem._setParent(this.arcMenu);
                             let categoryMenuItem = this.categoryDirectories.get(categoryId);
                             categoryMenuItem.appList.push(subdir);
                             this.applicationsMap.set(subdir, submenuItem);
@@ -286,22 +307,14 @@ var BaseLayout = class {
             categoriesBox = this.applicationsBox;
         }
         this._clearActorsFromBox(categoriesBox);
-        if(this.viewProgramsButton){
-            this.viewProgramsButton.actor.hide();
-            if(this._settings.get_boolean('enable-pinned-apps'))
-                this.backButton.actor.show();
-            else{
-                this.viewProgramsButton.actor.show();
-                this.backButton.actor.hide();
-            }
-        }
+        
         let isActiveMenuItemSet = false;
         for(let categoryMenuItem of this.categoryDirectories.values()){
             categoriesBox.add_actor(categoryMenuItem.actor);	
             if(!isActiveMenuItemSet){
                 isActiveMenuItemSet = true;
                 this.activeMenuItem = categoryMenuItem;
-                if(this.leftClickMenu.isOpen){
+                if(this.arcMenu.isOpen){
                     this.mainBox.grab_key_focus();
                 }
             }	 
@@ -351,6 +364,9 @@ var BaseLayout = class {
                 placeInfo = new PlaceDisplay.PlaceInfo('network',Gio.File.new_for_uri('network:///'), _('Network'),'network-workgroup-symbolic');
                 placeMenuItem = new PlaceDisplay.PlaceMenuItem(placeInfo, this);    
             }
+            else if(directory[2] === "ArcMenu_Trash"){
+                placeMenuItem = new MW.ShortcutMenuItem(this, _("Trash"), '', "ArcMenu_Trash");
+            }
             else if(directory[2].startsWith("ArcMenu_")){
                 let path = directory[2].replace("ArcMenu_",'');
 
@@ -368,7 +384,7 @@ var BaseLayout = class {
                 path = GLib.get_user_special_dir(path);
                 if (path != null){
                     placeInfo = new MW.PlaceInfo(Gio.File.new_for_path(path), _(directory[0]));
-                    placeMenuItem = new MW.PlaceMenuItem(this, placeInfo)
+                    placeMenuItem = new MW.PlaceMenuItem(this, placeInfo);
                 }
             }
             else{
@@ -376,8 +392,8 @@ var BaseLayout = class {
                 placeInfo = new MW.PlaceInfo(Gio.File.new_for_path(path), _(directory[0]), (directory[1] !== "ArcMenu_Folder") ? directory[1] : null);
                 placeMenuItem = new MW.PlaceMenuItem(this, placeInfo);
             }
-            
-            this.shortcutsBox.add_actor(placeMenuItem.actor);
+            if(placeMenuItem)
+                this.shortcutsBox.add_actor(placeMenuItem.actor);
         }
     }
 
@@ -395,24 +411,27 @@ var BaseLayout = class {
             let app = Shell.AppSystem.get_default().lookup_app(pinnedApps[i+2]);
             
             let placeInfo, placeMenuItem;
-            if(pinnedApps[i+2]=="ArcMenu_Home"){
+            if(pinnedApps[i+2] === "ArcMenu_Home"){
                 let homePath = GLib.get_home_dir();
                 placeInfo = new MW.PlaceInfo(Gio.File.new_for_path(homePath), _("Home"));
                 placeMenuItem = new MW.PlaceButtonItem(this, placeInfo);
             }
-            else if(pinnedApps[i+2]=="ArcMenu_Computer"){
+            else if(pinnedApps[i+2] === "ArcMenu_Computer"){
                 placeInfo = new PlaceDisplay.RootInfo();
                 placeInfo.icon = placeInfo.icon.to_string();
                 placeMenuItem = new MW.PlaceButtonItem(this, placeInfo);
             }
-            else if(pinnedApps[i+2]=="ArcMenu_Network"){
+            else if(pinnedApps[i+2] === "ArcMenu_Network"){
                 placeInfo = new PlaceDisplay.PlaceInfo('network',Gio.File.new_for_uri('network:///'), _('Network'),'network-workgroup-symbolic');
                 placeInfo.icon = placeInfo.icon.to_string();
                 placeMenuItem = new MW.PlaceButtonItem(this, placeInfo);    
             }
-            else if(pinnedApps[i+2] == "ArcMenu_Suspend" || pinnedApps[i+2] == "ArcMenu_LogOut" || pinnedApps[i+2] == "ArcMenu_PowerOff"
-                    || pinnedApps[i+2] == "ArcMenu_Lock" || app){
-                placeMenuItem = new MW.MintButton(this, pinnedApps[i], pinnedApps[i+1], pinnedApps[i+2]);
+            else if(pinnedApps[i+2] === "ArcMenu_Trash"){
+                placeMenuItem = new MW.ShortcutButtonItem(this, _("Trash"), '', "ArcMenu_Trash");
+            }
+            else if(pinnedApps[i+2] === Constants.ArcMenu_SettingsCommand || pinnedApps[i+2] === "ArcMenu_Suspend" || pinnedApps[i+2] === "ArcMenu_LogOut" || pinnedApps[i+2] === "ArcMenu_PowerOff"
+                    || pinnedApps[i+2] === "ArcMenu_Lock" || app){
+                placeMenuItem = new MW.ShortcutButtonItem(this, pinnedApps[i], pinnedApps[i+1], pinnedApps[i+2]);
             }
             else if(pinnedApps[i+2].startsWith("ArcMenu_")){
                 let path = pinnedApps[i+2].replace("ArcMenu_",'');
@@ -429,7 +448,7 @@ var BaseLayout = class {
                     path = imports.gi.GLib.UserDirectory.DIRECTORY_VIDEOS;
 
                 path = GLib.get_user_special_dir(path);
-                if (path != null){
+                if (path !== null){
                     placeInfo = new MW.PlaceInfo(Gio.File.new_for_path(path), _(pinnedApps[i]));
                     placeMenuItem = new MW.PlaceButtonItem(this, placeInfo);
                 }
@@ -441,6 +460,8 @@ var BaseLayout = class {
             }   
             if(addStyle) 
                 placeMenuItem.actor.add_style_class_name('arc-menu-action');
+            if(this.layout == Constants.MENU_LAYOUT.Mint)
+                placeMenuItem.actor.style = 'min-height: 20px;';
             placeMenuItem.actor.x_expand = false;
             placeMenuItem.actor.y_expand = false;
             placeMenuItem.actor.y_align = Clutter.ActorAlign.CENTER;
@@ -467,28 +488,30 @@ var BaseLayout = class {
                 this._settings.set_strv('pinned-app-list',array);
             });
             this.favoritesArray.push(favoritesMenuItem);
-        }   
+        }  
+        let categoryMenuItem = this.categoryDirectories ? this.categoryDirectories.get(Constants.CategoryType.PINNED_APPS) : null;
+        if(categoryMenuItem){
+            categoryMenuItem.appList = null;
+            categoryMenuItem.appList = [];
+            categoryMenuItem.appList = categoryMenuItem.appList.concat(this.favoritesArray);
+            for(let favoriteMenuItem of categoryMenuItem.appList){
+                favoriteMenuItem._updateIcon();
+            }
+        } 
     }
 
     _updatePinnedAppsWebBrowser(pinnedApps){
         //Find the Default Web Browser, if found add to pinned apps list, if not found delete the placeholder.
         //Will only run if placeholder is found. Placeholder only found with default settings set.
-        if(pinnedApps[0]=="ArcMenu_WebBrowser")
-        {     
+        if(pinnedApps[0]=="ArcMenu_WebBrowser"){     
             let [res, stdout, stderr, status] = GLib.spawn_command_line_sync("xdg-settings get default-web-browser");
             let webBrowser = String.fromCharCode.apply(null, stdout);
             let browserName = webBrowser.split(".desktop")[0];
-            browserName+=".desktop";
+            browserName += ".desktop";
             this._app = appSys.lookup_app(browserName);
             if(this._app){
-                let appIcon = this._app.create_icon_texture(25);
-                let iconName = '';
-                if(appIcon.icon_name)
-                    iconName = appIcon.icon_name;
-                else if(appIcon.gicon)
-                    iconName = appIcon.gicon.to_string();
                 pinnedApps[0] = this._app.get_name();
-                pinnedApps[1] = iconName;
+                pinnedApps[1] = '';
                 pinnedApps[2] = this._app.get_id();
             }
             else{
@@ -500,12 +523,11 @@ var BaseLayout = class {
         }
     }
 
-    displayFavorites() {
-        this._clearActorsFromBox();
-        if(this.viewProgramsButton){
-            this.viewProgramsButton.actor.show();
-            this.backButton.actor.hide();
-        }
+    displayFavorites() {          
+        if(this.activeCategoryType === Constants.CategoryType.HOME_SCREEN || this.activeCategoryType === Constants.CategoryType.PINNED_APPS)
+            this._clearActorsFromBox(this.applicationsBox);
+        else
+            this._clearActorsFromBox();
 
         for(let i = 0;i < this.favoritesArray.length; i++){
             this.applicationsBox.add_actor(this.favoritesArray[i].actor);	
@@ -513,7 +535,7 @@ var BaseLayout = class {
                 this.favoritesArray[i].actor.hide();
             if(i==0){
                 this.activeMenuItem = this.favoritesArray[i];
-                if(this.leftClickMenu.isOpen){
+                if(this.arcMenu.isOpen){
                     this.mainBox.grab_key_focus();
                 }
             }	   
@@ -521,34 +543,33 @@ var BaseLayout = class {
     }
 
     placesAddSeparator(id){
-        this._sections[id].box.add(this._createHorizontalSeparator(Constants.SEPARATOR_STYLE.SHORT));  
+        this._sections[id].add_actor(this._createHorizontalSeparator(Constants.SEPARATOR_STYLE.SHORT));  
     }
 
     _redisplayPlaces(id) {
-        if(this._sections[id].length>0){
+        if(this._sections[id].get_n_children() > 0){
             this.bookmarksShorctus = false;
             this.externalDevicesShorctus = false;
             this.networkDevicesShorctus = false;
-            this._sections[id].removeAll();
-            this._sections[id].box.destroy_all_children();
+            this._sections[id].destroy_all_children();
         }
         this._createPlaces(id);
     }
 
     _createPlaces(id) {
         let places = this.placesManager.get(id);
-        if(this.placesManager.get('network').length>0)
+        if(this.placesManager.get('network').length > 0)
             this.networkDevicesShorctus = true; 
-        if(this.placesManager.get('devices').length>0)
+        if(this.placesManager.get('devices').length > 0)
             this.externalDevicesShorctus=true;  
-        if(this.placesManager.get('bookmarks').length>0)
+        if(this.placesManager.get('bookmarks').length > 0)
             this.bookmarksShorctus = true;
 
-        if (this._settings.get_boolean('show-bookmarks')){
-            if(id=='bookmarks' && places.length>0){
+        if(this._settings.get_boolean('show-bookmarks')){
+            if(id === 'bookmarks' && places.length > 0){
                 for (let i = 0; i < places.length; i++){
-                    let item = new PlaceDisplay.PlaceMenuItem(places[i],this);
-                    this._sections[id].addMenuItem(item); 
+                    let item = new PlaceDisplay.PlaceMenuItem(places[i], this);
+                    this._sections[id].add_actor(item); 
                 } 
                 //create a separator if bookmark and software shortcut are both shown
                 if(this.bookmarksShorctus && this.softwareShortcuts){
@@ -556,45 +577,53 @@ var BaseLayout = class {
                 }
             }
         }
-        if (this._settings.get_boolean('show-external-devices')){
-            if(id== 'devices'){
+        if(this._settings.get_boolean('show-external-devices')){
+            if(id === 'devices'){
                 for (let i = 0; i < places.length; i++){
-                    let item = new PlaceDisplay.PlaceMenuItem(places[i],this);
-                    this._sections[id].addMenuItem(item); 
+                    let item = new PlaceDisplay.PlaceMenuItem(places[i], this);
+                    this._sections[id].add_actor(item); 
                 }
-                if((this.externalDevicesShorctus &&  !this.networkDevicesShorctus)  
-                    &&  (this.bookmarksShorctus || this.softwareShortcuts))
-                        this.placesAddSeparator(id);
+                if((this.externalDevicesShorctus && !this.networkDevicesShorctus) && (this.bookmarksShorctus || this.softwareShortcuts))
+                    this.placesAddSeparator(id);
             }
-            if(id== 'network'){
+            if(id === 'network'){
                 for (let i = 0; i < places.length; i++){
-                    let item = new PlaceDisplay.PlaceMenuItem(places[i],this);
-                    this._sections[id].addMenuItem(item); 
+                    let item = new PlaceDisplay.PlaceMenuItem(places[i], this);
+                    this._sections[id].add_actor(item); 
                 }
-                if(this.networkDevicesShorctus &&  (this.bookmarksShorctus || this.softwareShortcuts))
-                        this.placesAddSeparator(id);                        
+                if(this.networkDevicesShorctus && (this.bookmarksShorctus || this.softwareShortcuts))
+                    this.placesAddSeparator(id);
             }
         }
     }   
 
     setActiveCategory(category, setActive = true){
         this.activeMenuItem = category;
-        if(setActive){
-            category.setFakeActive(true);
-            if(this.leftClickMenu.isOpen){
-                this.activeMenuItem.actor.grab_key_focus();
-            }
-        }
-        else if(this.leftClickMenu.isOpen){
+        if(setActive && this.arcMenu.isOpen)
+            this.activeMenuItem.actor.grab_key_focus();
+        else if(this.arcMenu.isOpen)
             this.mainBox.grab_key_focus();
+    }
+
+    setFrequentAppsList(categoryMenuItem){
+        categoryMenuItem.appList = [];
+        let mostUsed = Shell.AppUsage.get_default().get_most_used();
+        for (let i = 0; i < mostUsed.length; i++) {
+            if (mostUsed[i] && mostUsed[i].get_app_info().should_show())
+                categoryMenuItem.appList.push(mostUsed[i]);
         }
     }
 
-    _clearActorsFromBox(box) {
+    _clearActorsFromBox(box){
         if(!box){
             box = this.applicationsBox;
+            this.activeCategoryType = -1;
         }
-        this.activeMenuItem = null;
+        let parent = box.get_parent();
+        if(parent instanceof St.ScrollView){
+            let scrollBoxAdj = parent.get_vscroll_bar().get_adjustment();
+            scrollBoxAdj.set_value(0);
+        }
         let actors = box.get_children();
         for (let i = 0; i < actors.length; i++) {
             let actor = actors[i];
@@ -604,45 +633,62 @@ var BaseLayout = class {
         }
     }
 
-    displayCategoryAppList(appList){
+    displayCategoryAppList(appList, category){
         this._clearActorsFromBox();
-        this._displayAppList(appList);
-        if(this.viewProgramsButton){
-            this.backButton.actor.show();
-            this.viewProgramsButton.actor.hide();
-            this.currentMenu = Constants.CURRENT_MENU.CATEGORY_APPLIST;
-        }
+        this._displayAppList(appList, category);
     }
 
-    _displayAppList(apps) {    
-        let activeMenuItemSet = false;    
+    _displayAppList(apps, displayAllApps){    
+        let activeMenuItemSet = false;
+        let currentCharacter;
+        let needsNewSeparator = false; 
+        let listByCharacter = this._settings.get_boolean("alphabetize-all-programs");
         for (let i = 0; i < apps.length; i++) {
             let app = apps[i];
+            if(listByCharacter && displayAllApps){
+                if(currentCharacter !== app.get_name().charAt(0).toLowerCase()){
+                    currentCharacter = app.get_name().charAt(0).toLowerCase();
+                    needsNewSeparator = true;
+                }
+                else{
+                    needsNewSeparator = false;
+                }
+                if(needsNewSeparator){
+                    let characterLabel = new PopupMenu.PopupMenuItem(currentCharacter.toUpperCase(), {
+                        hover: false,
+                        can_focus: false
+                    });  
+                    characterLabel.actor.add_style_pseudo_class = () => { return false;};
+                    characterLabel.actor.add(this._createHorizontalSeparator(Constants.SEPARATOR_STYLE.LONG));
+                    characterLabel.label.style = 'font-weight: bold;';
+                    this.applicationsBox.add_actor(characterLabel.actor)
+                }
+            }
             let item = this.applicationsMap.get(app);
             if (!item) {
                 item = new MW.ApplicationMenuItem(this, app);
                 this.applicationsMap.set(app, item);
             }
-            if(item.actor.get_parent()){
+            if(item.actor.get_parent())
                 item.actor.get_parent().remove_actor(item.actor);
-            }
-            if (!item.actor.get_parent()) 
+
+            if(!item.actor.get_parent()) 
                 this.applicationsBox.add_actor(item.actor);
-            if(item instanceof MW.CategorySubMenuItem){
+
+            if(item instanceof MW.CategorySubMenuItem)
                 this.applicationsBox.add_actor(item.menu.actor);
-                item._updateIcons();
-            }
+
             if(!activeMenuItemSet){
                 activeMenuItemSet = true;  
                 this.activeMenuItem = item;
-                if(this.leftClickMenu.isOpen){
+                if(this.arcMenu.isOpen){
                     this.mainBox.grab_key_focus();
                 }
             }    
         }
     }
 
-    _displayAppGridList(apps, columns, isFavoriteMenuItem, differentGrid = null) {               
+    _displayAppGridList(apps, columns, isFavoriteMenuItem, differentGrid) {               
         let count = 0;
         let top = -1;
         let left = 0;
@@ -679,8 +725,7 @@ var BaseLayout = class {
                 if(!activeMenuItemSet && !differentGrid){
                     activeMenuItemSet = true;  
                     this.activeMenuItem = item;
-                    this.firstItem = item;
-                    if(this.leftClickMenu.isOpen){
+                    if(this.arcMenu.isOpen){
                         this.mainBox.grab_key_focus();
                     }
                 }
@@ -688,7 +733,7 @@ var BaseLayout = class {
         }
     }
 
-    displayAllApps(){
+    displayAllApps(isGridLayout = false){
         let appList = [];
         this.applicationsMap.forEach((value,key,map) => {
             appList.push(key);
@@ -697,11 +742,8 @@ var BaseLayout = class {
             return a.get_name().toLowerCase() > b.get_name().toLowerCase();
         });
         this._clearActorsFromBox();
-        this._displayAppList(appList);
-        if(this.viewProgramsButton){
-            this.backButton.actor.show();
-            this.viewProgramsButton.actor.hide();  
-        }
+        let displayAllApps = !isGridLayout;
+        this._displayAppList(appList, displayAllApps);
     }
 
     _onSearchBoxKeyPress(searchBox, event) {
@@ -726,9 +768,6 @@ var BaseLayout = class {
     }
 
     _onSearchBoxChanged(searchBox, searchString) {        
-        if(this.currentMenu != Constants.CURRENT_MENU.SEARCH_RESULTS){              
-            this.currentMenu = Constants.CURRENT_MENU.SEARCH_RESULTS;        
-        }
         if(searchBox.isEmpty()){  
             this.newSearch.setTerms(['']); 
             this.setDefaultMenuView();                     	          	
@@ -736,52 +775,16 @@ var BaseLayout = class {
         }            
         else{         
             this._clearActorsFromBox(); 
+            let appsScrollBoxAdj = this.applicationsScrollBox.get_vscroll_bar().get_adjustment();
+            appsScrollBoxAdj.set_value(0);
             this.applicationsBox.add(this.newSearch.actor); 
-            this.newSearch.highlightDefault(true);
             this.newSearch.actor.show();         
             this.newSearch.setTerms([searchString]); 
-
-            if(this.viewProgramsButton){
-                this.backButton.actor.show();
-                this.viewProgramsButton.actor.hide();   
-            }  
+            this.newSearch.highlightDefault(true);
         }            	
     }
 
-    scrollToItem(button, scrollView, direction) {
-        if(button!=null){
-            let appsScrollBoxAdj = scrollView.get_vscroll_bar().get_adjustment();
-            let catsScrollBoxAlloc = scrollView.get_allocation_box();
-            let boxHeight = catsScrollBoxAlloc.y2 - catsScrollBoxAlloc.y1;
-            let[v, l, upper] = appsScrollBoxAdj.get_values();
-            let currentScrollValue = appsScrollBoxAdj.get_value();
-            let box = button.actor.get_allocation_box();
-            let buttonHeight = box.y1 - box.y2;
-    
-            if(direction == Constants.DIRECTION.DOWN && currentScrollValue == 0){
-                currentScrollValue=.01;
-                appsScrollBoxAdj.set_value(currentScrollValue);
-            }
-            else if(direction == Constants.DIRECTION.UP && (currentScrollValue + boxHeight) == upper){
-                currentScrollValue-=0.01;
-                appsScrollBoxAdj.set_value(currentScrollValue);
-            }
-            else{
-                direction == Constants.DIRECTION.UP ? buttonHeight = buttonHeight : buttonHeight = - buttonHeight;
-                appsScrollBoxAdj.set_value(currentScrollValue + buttonHeight);
-            }
-        }
-    }
-
-    setCurrentMenu(menu){
-        this.currentMenu = menu;
-    }
-
-    getCurrentMenu(){
-        return this.currentMenu;
-    } 
-
-    _onMainBoxKeyPress(mainBox, event) {
+    _onMainBoxKeyPress(actor, event) {
         if (event.has_control_modifier()) {
             if(this.searchBox)
                 this.searchBox.grabKeyFocus();
@@ -794,7 +797,7 @@ var BaseLayout = class {
         switch (symbol) {
             case Clutter.KEY_BackSpace:
                 if(this.searchBox){
-                    if (!this.searchBox.hasKeyFocus()) {
+                    if (!this.searchBox.hasKeyFocus() && !this.searchBox.isEmpty()) {
                         this.searchBox.grabKeyFocus();
                         let newText = this.searchBox.getText().slice(0, -1);
                         this.searchBox.setText(newText);
@@ -807,36 +810,32 @@ var BaseLayout = class {
             case Clutter.KEY_Up:
             case Clutter.KEY_Down:
             case Clutter.KEY_Left:
-            case Clutter.KEY_Right:       
-                if(this.layoutProperties.Search && this.searchBox.hasKeyFocus() && this.newSearch._defaultResult){
-                    if(this.newSearch.actor.get_parent()){
-                        this.newSearch._defaultResult.actor.grab_key_focus();
-                        let appsScrollBoxAdj = this.applicationsScrollBox.get_vscroll_bar().get_adjustment();
-                        appsScrollBoxAdj.set_value(0);
+            case Clutter.KEY_Right:
+                let direction;
+                if (symbol === Clutter.KEY_Down)
+                    direction = St.DirectionType.DOWN;
+                if (symbol === Clutter.KEY_Right)
+                    direction = St.DirectionType.RIGHT
+                if (symbol === Clutter.KEY_Up)
+                    direction = St.DirectionType.UP;
+                if (symbol === Clutter.KEY_Left)
+                    direction = St.DirectionType.LEFT;
+
+                if(this.layoutProperties.Search && this.searchBox.hasKeyFocus() && this.newSearch._defaultResult && this.newSearch.actor.get_parent()){
+                    this.newSearch.highlightDefault(!this.newSearch._highlightDefault);
+                    this.newSearch._defaultResult.actor.grab_key_focus();
+                    if(this.newSearch._highlightDefault)
                         return Clutter.EVENT_STOP;
-                    }                   
-                    else{
-                        return Clutter.EVENT_PROPAGATE;
-                    } 
+                    return actor.navigate_focus(global.stage.key_focus, direction, false);      
                 }
-                else if(this.activeMenuItem!=null && !this.activeMenuItem.actor.has_key_focus()){
+                else if(global.stage.key_focus === this.mainBox || (this.layoutProperties.Search && global.stage.key_focus === this.searchBox.actor)){
                     this.activeMenuItem.actor.grab_key_focus();
                     return Clutter.EVENT_STOP;
                 }
-                else if(this.activeMenuItem!=null){
-                    this.activeMenuItem.actor.grab_key_focus();
-                    return Clutter.EVENT_PROPAGATE;
-                }
-                else if(this.firstItem){
-                    this.firstItem.actor.grab_key_focus();
-                    this.firstItem = null;
-                    return Clutter.EVENT_STOP;
-                }
-                else{
-                    return Clutter.EVENT_PROPAGATE;
-                }
+                return actor.navigate_focus(global.stage.key_focus, direction, false);
             case Clutter.KEY_KP_Enter:
             case Clutter.KEY_Return:
+            case Clutter.KEY_Escape:
                 return Clutter.EVENT_PROPAGATE;
             default:
                 if (key.length != 0) {
@@ -853,39 +852,52 @@ var BaseLayout = class {
     destroy(isReload){
         if(this.applicationsMap){
             this.applicationsMap.forEach((value,key,map)=>{
-                value.destroy();
+                if(value && value.needsDestroy)
+                    value.destroy();
             });
             this.applicationsMap = null;
         }
 
         if(this.categoryDirectories){
             this.categoryDirectories.forEach((value,key,map)=>{
-                value.destroy();
+                if(value && value.needsDestroy)
+                    value.destroy();
             });
             this.categoryDirectories = null;    
         }
 
         if(this.favoritesArray){
-            for (let i = 0; i < this.favoritesArray.length; i++) {
-                this.favoritesArray[i].destroy();
+            for(let i = 0; i < this.favoritesArray.length; i++){
+                if(this.favoritesArray[i] && this.favoritesArray[i].needsDestroy)
+                    this.favoritesArray[i].destroy();
             }
             this.favoritesArray = null;
         }
-
-        if(this.network != null){
+        
+        if(this.network){
             this.network.destroy();
             this.networkMenuItem.destroy();
         }
 
-        if(this.computer != null){
+        if(this.computer){
             this.computer.destroy();
             this.computerMenuItem.destroy();
         }
 
-        if(this.placesManager != null)
+        if(this.placesManager){
+            for(let id in this._sections){
+                this._sections[id].get_children().forEach((child) =>{
+                    child.destroy();
+                });
+            };
+            if(this.placeManagerUpdatedID){
+                this.placesManager.disconnect(this.placeManagerUpdatedID);
+                this.placeManagerUpdatedID = null;
+            }
             this.placesManager.destroy();
-
-        if(this.searchBox != null){
+        }
+            
+        if(this.searchBox){
             if (this._searchBoxChangedId > 0) {
                 this.searchBox.disconnect(this._searchBoxChangedId);
                 this._searchBoxChangedId = 0;
@@ -900,11 +912,11 @@ var BaseLayout = class {
             }
         }
 
-        if(!isReload){
-            if(this.newSearch){
-                this.newSearch.destroy();
-            }
+        if(this.newSearch){
+            this.newSearch.destroy();
+        }
 
+        if(!isReload){
             if (this._mainBoxKeyPressId > 0) {
                 this.mainBox.disconnect(this._mainBoxKeyPressId);
                 this._mainBoxKeyPressId = 0;
@@ -923,12 +935,14 @@ var BaseLayout = class {
             this.isRunning = false;
         }
        
-        this.mainBox.destroy_all_children();
+        this.mainBox.get_children().forEach((child) => {
+            if(child && child !== undefined && child !== null)
+                child.destroy();
+        });
     }
 
     _createScrollBox(params){
-        let scrollBox = new St.ScrollView(params);      
-
+        let scrollBox = new MW.ScrollView(params);           
         let panAction = new Clutter.PanAction({ interpolate: false });
         panAction.connect('pan', (action) => {
             this._blockActivateEvent = true;
@@ -938,30 +952,30 @@ var BaseLayout = class {
         panAction.connect('gesture-end', (action) => this.onPanEnd(action, scrollBox));
         scrollBox.add_action(panAction);
 
-        scrollBox.connect('key-press-event', (actor, event) => {
-            let key = event.get_key_symbol();
-            if(key == Clutter.KEY_Up)
-                this.scrollToItem(this.activeMenuItem, scrollBox, Constants.DIRECTION.UP);
-            else if(key == Clutter.KEY_Down)
-                this.scrollToItem(this.activeMenuItem, scrollBox, Constants.DIRECTION.DOWN);
-        }) ;         
         scrollBox.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
         scrollBox.clip_to_allocation = true;
 
         return scrollBox;
     }
 
+    _keyFocusIn(actor) {
+        if (this._focusChild == actor)
+            return;
+        this._focusChild = actor;
+        Utils.ensureActorVisibleInScrollView(actor);
+    }
+
     onPan(action, scrollbox) {
         let [dist_, dx_, dy] = action.get_motion_delta(0);
         let adjustment = scrollbox.get_vscroll_bar().get_adjustment();
-        adjustment.value -= (dy / scrollbox.height) * adjustment.page_size;
+        adjustment.value -=  dy;
         return false;
     }
     
     onPanEnd(action, scrollbox) {
         let velocity = -action.get_velocity(0)[2];
-        let endPanValue = scrollbox.get_vscroll_bar().get_adjustment().value + velocity;
         let adjustment = scrollbox.get_vscroll_bar().get_adjustment();
+        let endPanValue = adjustment.value + velocity * 2;
         adjustment.value = endPanValue;
     }
 

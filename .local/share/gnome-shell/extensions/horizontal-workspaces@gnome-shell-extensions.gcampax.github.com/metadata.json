@@ -6,9 +6,9 @@
   "name": "Horizontal workspaces",
   "settings-schema": "org.gnome.shell.extensions.horizontal-workspaces",
   "shell-version": [
-    "3.36"
+    "3.38"
   ],
   "url": "https://gitlab.gnome.org/GNOME/gnome-shell-extensions",
   "uuid": "horizontal-workspaces@gnome-shell-extensions.gcampax.github.com",
-  "version": 3
+  "version": 5
 }
